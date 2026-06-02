@@ -1,0 +1,30 @@
+{
+  "id": "token-sounds",
+  "title": "Sound of Token",
+  "description": "Play ambient sounds through tokens.",
+
+  "version": "0.0.1",
+
+  "compatibility": {
+    "minimum": 14,
+    "verified": 14
+  },
+  
+  "authors": [
+    {
+      "name": "Mestre Digital",
+      "url": "http://youtube.com/@mestredigital",
+      "flags": {}
+    }
+  ],
+  
+  "esmodules": ["scripts/token-sounds.js"],
+  "scripts": [],
+  "styles": ["styles/token-sounds.css"],
+  
+  "socket": true,
+  
+  "url": "https://github.com/brunocalado/token-sounds",
+  "manifest": "https://raw.githubusercontent.com/brunocalado/token-sounds/main/module.json",
+  "download": "https://codeload.github.com/brunocalado/token-sounds/zip/main",
+}

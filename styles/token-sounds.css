@@ -1,0 +1,74 @@
+.token-sounds {
+  &.token-sounds-wrapper {
+    visibility: hidden;
+    position: absolute;
+    left: 65px;
+    top: -132px;
+    display: grid;
+    padding: 3px;
+    box-sizing: content-box;
+    width: 200px;
+    grid-template-columns: repeat(4, 25%);
+    background: rgba(0, 0, 0, 0.6);
+    box-shadow: 0 0 15px var(--color-shadow-dark);
+    border: 1px solid var(--color-border-dark-3);
+    border-radius: 4px;
+    pointer-events: all;
+
+    &.active {
+      visibility: visible;
+    }
+
+    .sound-control {
+      position: relative;
+    }
+
+    .sound-control img {
+      width: 48px;
+      height: 48px;
+      margin: 0;
+      padding: 0;
+      border: none;
+      opacity: 0.5;
+    }
+
+    .sound-control .fa-volume {
+      z-index: 0;
+      top: 10px;
+      left: 8px;
+      color: greenyellow;
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .sound {
+      border-left: 1px solid rgba(0, 0, 0, 0);
+      border-right: 1px solid rgba(0, 0, 0, 0);
+    }
+
+    .sound.drag-left {
+      border-left: 1px solid orange;
+    }
+
+    .sound.drag-right {
+      border-right: 1px solid orange;
+    }
+  }
+
+  &.control-icon {
+    position: relative;
+
+    &.playing {
+      color: greenyellow;
+    }
+
+    .player-edit {
+      top: 1px;
+      left: 31px;
+      color: green;
+      position: absolute;
+      pointer-events: none;
+      font-size: 0.4em;
+    }
+  }
+}
