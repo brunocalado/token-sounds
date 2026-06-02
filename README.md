@@ -7,7 +7,7 @@
 Use this: 
 
 ```js
-https://raw.githubusercontent.com/brunocalado/rpgnextcriticos/main/module.json
+https://raw.githubusercontent.com/brunocalado/token-sounds/main/module.json
 ```
 
 # License
