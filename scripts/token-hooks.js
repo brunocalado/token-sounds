@@ -1,6 +1,13 @@
 import { MODULE_ID } from "./constants.js";
-import { openCustomConfig } from "./ambient-sound-custom-config.js";
-import { stopSounds, playSounds, refreshSoundPosition, deleteToken, reconcileNonRepeat } from "./token-sounds.js";
+import { openSoundConfig } from "./sound-config.js";
+import {
+  deleteToken,
+  playOneShot,
+  playSounds,
+  refreshSoundPosition,
+  stopOneShot,
+  stopSounds,
+} from "./token-sounds.js";
 
 /**
  * Wire every Token/Actor lifecycle hook the module reacts to. Called once from the `init` hook.
@@ -8,8 +15,8 @@ import { stopSounds, playSounds, refreshSoundPosition, deleteToken, reconcileNon
 export function registerTokenHooks() {
   Hooks.on("canvasReady", async () => {
     if (!game.user.isGM) return;
-    await reconcileNonRepeat();
     for (const token of canvas.tokens.placeables) {
+      await _cleanupStuckOneShots(token.document);
       playSounds(token.document);
     }
   });
@@ -60,20 +67,34 @@ export function registerTokenHooks() {
 
     const flags = change.flags?.[MODULE_ID];
     if (flags) {
+      const dataSource = game.actors.get(token.actorId) ?? token;
+      const allSounds = dataSource.getFlag(MODULE_ID, "sounds") ?? {};
+
       if (flags.sounds) {
         for (const [soundId, val] of Object.entries(flags.sounds)) {
-          if (val === foundry.data.operators.ForcedDeletion) stopSounds(token, [soundId]);
-          else {
+          if (val === foundry.data.operators.ForcedDeletion) {
             stopSounds(token, [soundId]);
-            playSounds(token, [soundId]);
+          } else {
+            stopSounds(token, [soundId]);
+            // Only repeat sounds get auto-(re)started on config edit.
+            // Non-repeat entries are user-triggered one-shots and must not fire on save.
+            if (allSounds[soundId]?.repeat) playSounds(token, [soundId]);
           }
         }
       }
 
       if (flags.playing) {
         for (const [soundId, play] of Object.entries(flags.playing)) {
-          if (play === foundry.data.operators.ForcedDeletion || !play) stopSounds(token, [soundId]);
-          else playSounds(token, [soundId]);
+          const sound = allSounds[soundId];
+          if (!sound) continue;
+          const stopping = play === foundry.data.operators.ForcedDeletion || !play;
+          if (sound.repeat) {
+            if (stopping) stopSounds(token, [soundId]);
+            else playSounds(token, [soundId]);
+          } else {
+            if (stopping) stopOneShot(token, soundId);
+            else playOneShot(token, sound);
+          }
         }
       }
     }
@@ -83,14 +104,12 @@ export function registerTokenHooks() {
   });
 
   Hooks.on("updateActor", async (actor, change, options, userId) => {
-    if (game.user.id === userId) {
-      if (change.flags?.[MODULE_ID]) {
-        actor.getActiveTokens(false, true).forEach((t) => {
-          stopSounds(t);
-          playSounds(t);
-        });
-      }
-    }
+    if (game.user.id !== userId) return;
+    if (!change.flags?.[MODULE_ID]) return;
+    actor.getActiveTokens(false, true).forEach((t) => {
+      stopSounds(t);
+      playSounds(t);
+    });
   });
 
   Hooks.on("renderTokenHUD", (hud, html, token) => {
@@ -140,6 +159,29 @@ export function registerTokenHooks() {
 }
 
 /**
+ * On canvasReady, clear any non-repeat `playing` flag that survived the last session.
+ * Repeat-mode sounds are re-created in `playSounds`; non-repeat ones must never auto-replay,
+ * so the flag is force-deleted to bring the UI back in sync.
+ * @param {TokenDocument} token
+ * @returns {Promise<void>}
+ */
+async function _cleanupStuckOneShots(token) {
+  const dataSource = game.actors.get(token.actorId) ?? token;
+  const sounds = dataSource.getFlag(MODULE_ID, "sounds") ?? {};
+  const playing = token.getFlag(MODULE_ID, "playing") ?? {};
+  const update = {};
+  let dirty = false;
+  for (const soundId of Object.keys(playing)) {
+    const s = sounds[soundId];
+    if (s && !s.repeat) {
+      update[`flags.${MODULE_ID}.playing.${soundId}`] = foundry.data.operators.ForcedDeletion;
+      dirty = true;
+    }
+  }
+  if (dirty) await token.update(update);
+}
+
+/**
  * Click handler for the soundboard HUD button. Toggles the menu open/closed and lazily renders
  * it (with all child listeners) on first open.
  * @param {Event} event
@@ -149,8 +191,6 @@ async function _onButtonClick(event, hud) {
   const button = event.currentTarget;
   const token = hud.object.document;
   const actor = game.actors.get(token.actorId);
-
-  canvas.tokens.hud.togglePalette();
 
   button.classList.toggle("active");
   hud._soundBoard.active = button.classList.contains("active");
@@ -222,7 +262,7 @@ function _bindMenuListeners(wrapper, token, actor) {
 }
 
 /**
- * Open the per-sound config sheet when the user right-clicks an editable sound.
+ * Open the module-native sound config sheet when the user right-clicks an editable sound.
  * @param {Event} event
  * @param {Actor|undefined} dataSource
  */
@@ -232,17 +272,17 @@ function _onSoundRightClick(event, dataSource) {
   if (!soundEl) return;
   const soundId = soundEl.dataset.soundId;
   const sound = (dataSource.getFlag(MODULE_ID, "sounds") ?? {})[soundId];
-  if (sound) openCustomConfig(sound, dataSource, false);
+  if (sound) openSoundConfig(sound, dataSource, false);
 }
 
 /**
- * Open the sound config sheet in "create" mode from the + button.
+ * Open the module-native sound config sheet in "create" mode from the + button.
  * @param {Event} event
  * @param {Actor|undefined} dataSource
  */
 function _onAddSoundClick(event, dataSource) {
   event.stopPropagation();
-  if (dataSource) openCustomConfig({}, dataSource, true);
+  if (dataSource) openSoundConfig({}, dataSource, true);
 }
 
 /**

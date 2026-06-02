@@ -1,0 +1,50 @@
+.token-sounds.sound-config {
+  background: var(--color-bg);
+
+  & .window-content {
+    background: var(--color-bg);
+  }
+
+  & .sound-config-fields {
+    border: none;
+    margin: 0;
+    padding: 0.25rem 0 0.5rem;
+  }
+
+  & .form-group {
+    margin-bottom: 0.5rem;
+
+    &.hidden {
+      display: none;
+    }
+  }
+
+  & .form-fields {
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  & .volume-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  & .volume-slider {
+    flex: 1;
+  }
+
+  & .volume-display {
+    min-width: 3.25rem;
+    text-align: right;
+    color: var(--color-text-secondary);
+  }
+
+  & .form-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--color-border-light-2);
+  }
+}

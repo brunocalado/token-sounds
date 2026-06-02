@@ -1,0 +1,81 @@
+<div class="sound-config-body">
+<fieldset class="sound-config-fields">
+  <input type="hidden" name="soundId" value="{{data.soundId}}">
+
+  <div class="form-group">
+    <label>Icon</label>
+    <div class="form-fields">
+      <input type="text" name="img" value="{{data.img}}">
+      <button type="button" class="file-picker" data-action="pickImage" title="Browse Image" tabindex="-1">
+        <i class="fas fa-file-import fa-fw"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>Description</label>
+    <div class="form-fields">
+      <input type="text" name="description" value="{{data.description}}">
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>Repeat</label>
+    <div class="form-fields">
+      <input type="checkbox" name="repeat" data-dtype="Boolean" {{#if data.repeat}}checked{{/if}}>
+    </div>
+  </div>
+
+  <div class="form-group" data-show-when="non-repeat">
+    <label>Source</label>
+    <div class="form-fields">
+      <select name="sourceMode">
+        {{selectOptions sourceChoices selected=data.sourceMode}}
+      </select>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label class="path-label">Audio</label>
+    <div class="form-fields">
+      <input type="text" name="path" value="{{data.path}}">
+      <button type="button" class="file-picker" data-action="pickSource" data-pick-type="audio" title="Browse Audio" tabindex="-1">
+        <i class="fas fa-file-import fa-fw"></i>
+      </button>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>Radius (grid units)</label>
+    <div class="form-fields">
+      <input type="number" name="radius" value="{{data.radius}}" data-dtype="Number" min="0" step="1">
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>Volume</label>
+    <div class="form-fields volume-row">
+      <input type="range" name="volume" value="{{data.volume}}" data-dtype="Number" min="0" max="1" step="0.05" class="volume-slider">
+      <span class="volume-display">{{volumePct}}</span>
+    </div>
+  </div>
+
+  <div class="form-group" data-show-when="repeat">
+    <label>Constrained by Walls and Surfaces</label>
+    <div class="form-fields">
+      <input type="checkbox" name="walls" data-dtype="Boolean" {{#if data.walls}}checked{{/if}}>
+    </div>
+  </div>
+</fieldset>
+
+<footer class="form-footer">
+  <button type="submit" class="primary">
+    <i class="fas fa-save"></i> {{#if create}}Create{{else}}Update{{/if}}
+  </button>
+  {{#unless create}}
+  <button type="button" data-action="sotRemove">
+    <i class="fas fa-trash"></i> Remove
+  </button>
+  {{/unless}}
+</footer>
+</div>

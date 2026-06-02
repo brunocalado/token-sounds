@@ -6,7 +6,30 @@
 - Ícone de estado desligado (imagem do tile) não aparece mais ao mesmo tempo que o ícone verde pulsante.
 - Botão e tiles do soundboard revertem ao estado desligado automaticamente quando um som non-repeat termina.
 - Removido erro no console sobre sintaxe de deleção legada (`-=key`); migrado para `foundry.data.operators.ForcedDeletion` em todos os arquivos.
+- **Sons non-repeat agora tocam apenas uma vez e o botão desativa imediatamente.** Listener snapshot é capturado no momento do clique, eliminando replays ao mover tokens ou entrar no raio de audição.
+
+## [Added]
+- `SoundEntry` DataModel com validação de tipo para campos de configuração de som.
+- `SoundConfigSheet` — AppV2 sheet módulo nativo substituindo o dialog padrão do Foundry.
+- Template `sound-config.hbs` com campos dinâmicos condicionais e visibility controlada por toggles.
+- Stylesheet `sound-config.css` com design opaco e scoping CSS isolado.
+- Slider de volume com exibição de percentual em tempo real.
+- Suporte a folder mode para seleção aleatória de arquivos de áudio da raiz da pasta.
+- Sistema de socket para sincronização de playback de sons non-repeat entre clientes.
+- Funções `playOneShot()` e `stopOneShot()` para gerenciamento de playback único.
+- Funções auxiliares `_computeListenersInRange()` para snapshot de tokens ouvintes e `_pickRandomFromFolder()` para seleção aleatória.
+- Setting global `channel` para roteamento de áudio (interface/music/environment).
+- Limpeza automática de flags `playing` de non-repeat em `canvasReady` para evitar replays após reload.
 
 ## [Changed]
-- Sistema de cleanup de sons non-repeat substituído: canvas ticker → setTimeout direto. Mais preciso e sem polling.
-- Adicionado hook `reconcileNonRepeat` em `canvasReady` para resgatar timers pendentes após reload do GM.
+- Arquitetura de non-repeat: transição de AmbientSound persistente para one-shot baseado em socket com snapshot de listeners.
+- `playSounds()` agora pula sons non-repeat (gerenciados por `playOneShot`).
+- Patching de AmbientSound limitado apenas a sons repeat; non-repeat não mais usa AmbientSound.
+- `token-hooks.js` atualizado para usar nova `SoundConfigSheet` e branching condicional por tipo de som.
+- Dinâmica de UI: repeat toggle controla visibilidade de `sourceMode`, `walls` toggle e campo `radius`.
+
+## [Removed]
+- `ambient-sound-custom-config.js` — classe `AmbientSoundCustomConfig` substituída por module-native AppV2.
+- `SETTINGS.nonRepeat` array persistente de cleanup.
+- Funções `reconcileNonRepeat()`, `endNonRepeatEarly()`, `_cleanupNonRepeat()`, `scheduleNonRepeatCleanup()`.
+- Lógica de agendamento non-repeat em `sync()` patch.

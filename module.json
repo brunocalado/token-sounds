@@ -20,7 +20,7 @@
   
   "esmodules": ["scripts/token-sounds.js"],
   "scripts": [],
-  "styles": ["styles/token-sounds.css"],
+  "styles": ["styles/token-sounds.css", "styles/sound-config.css"],
   
   "socket": true,
   

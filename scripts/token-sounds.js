@@ -1,58 +1,92 @@
-import { MODULE_ID } from "./constants.js";
+import { AUDIO_EXTENSIONS, MODULE_ID } from "./constants.js";
 import { SoundOfToken } from "./api.js";
 import { registerTokenHooks } from "./token-hooks.js";
 
-const SETTINGS = {
-  nonRepeat: [],
-};
+/**
+ * Client-side cache of currently audible one-shot Sound instances, keyed by
+ * `<sourceTokenId>:<soundId>`. Lets us cancel mid-flight playback when the user
+ * toggles the soundboard tile off before the natural end.
+ * @type {Map<string, foundry.audio.Sound>}
+ */
+const _activeOneShots = new Map();
 
 Hooks.on("init", () => {
-  game.settings.register(MODULE_ID, "nonRepeat", {
+  game.settings.register(MODULE_ID, "channel", {
+    name: "Audio Channel",
+    hint: "Mixer channel used to route module sounds (interface, music, or environment).",
     scope: "world",
-    config: false,
-    type: Array,
-    default: [],
-    onChange: (val) => {
-      SETTINGS.nonRepeat = val;
-    },
+    config: true,
+    type: String,
+    default: "environment",
+    choices: { interface: "Interface", music: "Music", environment: "Environment" },
   });
-  SETTINGS.nonRepeat = game.settings.get(MODULE_ID, "nonRepeat");
 
   patchAmbientSound();
   registerTokenHooks();
 
-  // Handle broadcasts forwarded by non-GM clients so the responsible GM performs the side effect.
-  game.socket?.on(`module.${MODULE_ID}`, (message) => {
-    if (!game.user.isGM) return;
-    const isResponsibleGM = !game.users
-      .filter((user) => user.isGM && (user.active || user.isActive))
-      .some((other) => other.id < game.user.id);
-    if (!isResponsibleGM) return;
-
-    const args = message.args;
-
-    if (message.handlerName === "sound" && message.type === "CREATE") {
-      const token = game.scenes.get(args.sceneId)?.tokens.get(args.tokenId);
-      if (token) createSound(token, args.sound, true);
-    } else if (message.handlerName === "sound" && message.type === "DELETE") {
-      const ambientSound = game.scenes.get(args.sceneId)?.sounds.get(args.ambientSoundId);
-      if (ambientSound) ambientSound.delete();
-      endNonRepeatEarly(args.tokenId, args.soundId, args.sceneId);
-    } else if (message.handlerName === "sound" && message.type === "POSITIONS") {
-      const scene = game.scenes.get(args.sceneId);
-      if (scene) refreshSoundPosition(scene.tokens.get(args.tokenId));
-    }
-  });
+  game.socket?.on(`module.${MODULE_ID}`, _onSocketMessage);
 
   globalThis.SoundOfToken = SoundOfToken;
 });
+
+/**
+ * Single entry point for module socket messages. Broadcast types (ONESHOT_PLAY, ONESHOT_STOP)
+ * run on every client; request types only on the responsible GM.
+ * @param {object} message
+ */
+function _onSocketMessage(message) {
+  if (message?.handlerName !== "sound") return;
+
+  switch (message.type) {
+    case "ONESHOT_PLAY":  _onOneShotPlay(message.args);  return;
+    case "ONESHOT_STOP":  _onOneShotStop(message.args);  return;
+  }
+
+  if (!game.user.isGM) return;
+  const isResponsibleGM = !game.users
+    .filter((user) => user.isGM && (user.active || user.isActive))
+    .some((other) => other.id < game.user.id);
+  if (!isResponsibleGM) return;
+
+  const args = message.args ?? {};
+  switch (message.type) {
+    case "CREATE": {
+      const token = game.scenes.get(args.sceneId)?.tokens.get(args.tokenId);
+      if (token) createSound(token, args.sound, true);
+      break;
+    }
+    case "DELETE": {
+      const ambientSound = game.scenes.get(args.sceneId)?.sounds.get(args.ambientSoundId);
+      if (ambientSound) ambientSound.delete();
+      break;
+    }
+    case "POSITIONS": {
+      const scene = game.scenes.get(args.sceneId);
+      if (scene) refreshSoundPosition(scene.tokens.get(args.tokenId));
+      break;
+    }
+    case "ONESHOT_REQUEST": {
+      const token = game.scenes.get(args.sceneId)?.tokens.get(args.tokenId);
+      if (!token) return;
+      const dataSource = game.actors.get(token.actorId) ?? token;
+      const sound = (dataSource.getFlag(MODULE_ID, "sounds") ?? {})[args.soundId];
+      if (sound) playOneShot(token, sound);
+      break;
+    }
+    case "ONESHOT_STOP_REQUEST": {
+      const token = game.scenes.get(args.sceneId)?.tokens.get(args.tokenId);
+      if (token) stopOneShot(token, args.soundId);
+      break;
+    }
+  }
+}
 
 /**
  * Patch the canvas AmbientSound placeable so module-generated sounds:
  *  - honour their AmbientSoundDocument#repeat flag after every sync (core forces loop=true).
  *  - use a non-singleton audio instance, so multiple tokens can simultaneously play the same source.
  *
- * Calls the captured original methods so chained patches by other modules keep working.
+ * Only repeat sounds reach this code path now; non-repeat is handled entirely via socket play.
  */
 function patchAmbientSound() {
   const AmbientSoundCls = foundry.canvas.placeables.AmbientSound;
@@ -62,35 +96,6 @@ function patchAmbientSound() {
     const result = await originalSync.apply(this, args);
     if (this.sound?.playing && this.document.getFlag(MODULE_ID, "autoGen")) {
       this.sound.loop = this.document.repeat;
-
-      // Schedule one-shot cleanup on the first sync where the sound is confirmed playing.
-      // this.sound.duration is guaranteed available at this point (buffer already decoded).
-      if (!this.document.repeat && !this._nonRepeatScheduled) {
-        const isResponsibleGM =
-          game.user.isGM &&
-          !game.users
-            .filter((u) => u.isGM && (u.active || u.isActive))
-            .some((other) => other.id < game.user.id);
-
-        if (isResponsibleGM) {
-          const tokenId = this.document.getFlag(MODULE_ID, "tokenId");
-          const soundId = this.document.getFlag(MODULE_ID, "soundId");
-          const alreadyTracked = SETTINGS.nonRepeat.some(
-            (e) => e.tokenId === tokenId && e.soundId === soundId,
-          );
-          if (!alreadyTracked && tokenId && soundId && this.sound.duration > 0) {
-            this._nonRepeatScheduled = true;
-            const token = this.document.parent?.tokens.get(tokenId);
-            if (token) {
-              scheduleNonRepeatCleanup(
-                token,
-                soundId,
-                Date.now() + this.sound.duration * 1000 + 500,
-              );
-            }
-          }
-        }
-      }
     }
     return result;
   };
@@ -113,15 +118,15 @@ function patchAmbientSound() {
 }
 
 /**
- * Resolve the soundboard list for a token (falling back to its actor) and start every entry
- * the token is currently marked as playing but does not yet have an attached AmbientSound for.
+ * Resolve the soundboard list for a token and start every repeat entry the token is
+ * currently marked as playing but does not yet have an attached AmbientSound for.
+ * Non-repeat entries are ignored here — they are one-shots dispatched at click time.
  * @param {TokenDocument} token
  * @param {string[]} [soundIds] Optional subset; defaults to every id in the playing flag.
  * @returns {Promise<void>}
  */
 export async function playSounds(token, soundIds) {
   const dataSource = game.actors.get(token.actorId) ?? token;
-
   const sounds = dataSource.getFlag(MODULE_ID, "sounds") ?? {};
   const playing = token.getFlag(MODULE_ID, "playing") ?? {};
 
@@ -129,8 +134,10 @@ export async function playSounds(token, soundIds) {
   const attached = token.getFlag(MODULE_ID, "attached") ?? {};
 
   for (const soundId of soundIds) {
-    if (!attached[soundId] && playing[soundId] && sounds[soundId]) {
-      await createSound(token, sounds[soundId]);
+    const sound = sounds[soundId];
+    if (!sound?.repeat) continue;
+    if (!attached[soundId] && playing[soundId]) {
+      await createSound(token, sound);
     }
   }
 
@@ -138,7 +145,8 @@ export async function playSounds(token, soundIds) {
 }
 
 /**
- * Stop every sound on `token` that was previously playing but is no longer in the playing flag.
+ * Stop every repeat-mode sound on `token` whose `attached` reference is still set but
+ * whose `playing` flag has been cleared.
  * @param {TokenDocument} token
  * @param {string[]} [soundIds] Optional subset; defaults to every id in the playing flag.
  */
@@ -160,7 +168,6 @@ export function stopSounds(token, soundIds) {
  */
 export function deleteToken(token) {
   const attached = token.getFlag(MODULE_ID, "attached") ?? {};
-
   for (const [soundId, ambientSoundId] of Object.entries(attached)) {
     const ambientSound = token.parent?.sounds.get(ambientSoundId);
     if (ambientSound) deleteSoundDocument(ambientSound, token, soundId);
@@ -168,7 +175,7 @@ export function deleteToken(token) {
 }
 
 /**
- * Delete a single attached sound and clear its reference from the token flag.
+ * Delete a single attached AmbientSound and clear its reference from the token flag.
  * @param {TokenDocument} token
  * @param {string} soundId
  * @param {string} ambientSoundId
@@ -180,120 +187,27 @@ export function deleteSound(token, soundId, ambientSoundId) {
 }
 
 /**
- * GM-only delete of an AmbientSound document. Non-GM clients forward the request via socket so
- * the responsible GM performs the deletion.
+ * GM-only delete of an AmbientSound document. Non-GM clients forward via socket.
  * @param {AmbientSoundDocument} doc
  * @param {TokenDocument} token
  * @param {string} soundId
  */
 function deleteSoundDocument(doc, token, soundId) {
   if (!game.user.isGM) {
-    const message = {
+    game.socket?.emit(`module.${MODULE_ID}`, {
       handlerName: "sound",
       args: { ambientSoundId: doc.id, tokenId: token.id, sceneId: token.parent.id, soundId },
       type: "DELETE",
-    };
-    game.socket?.emit(`module.${MODULE_ID}`, message);
+    });
     return;
   }
-
-  endNonRepeatEarly(token.id, soundId, token.parent.id);
-
   doc.delete();
 }
 
 /**
- * Remove a non-repeat tracker entry early, e.g. when its sound was manually stopped.
- * @param {string} tokenId
- * @param {string} soundId
- * @param {string} sceneId
- */
-function endNonRepeatEarly(tokenId, soundId, sceneId) {
-  const newRepeat = SETTINGS.nonRepeat.filter(
-    (o) => o.soundId !== soundId || o.tokenId !== tokenId || o.sceneId !== sceneId,
-  );
-  if (SETTINGS.nonRepeat.length !== newRepeat.length) {
-    SETTINGS.nonRepeat = newRepeat;
-    game.settings.set(MODULE_ID, "nonRepeat", newRepeat);
-  }
-}
-
-/**
- * Remove a non-repeat tracker entry and clear the token's playing flag.
- * Safe to call when the entry was already removed (stale timer after a manual stop).
- * @param {string} sceneId
- * @param {string} tokenId
- * @param {string} soundId
- */
-function _cleanupNonRepeat(sceneId, tokenId, soundId) {
-  const before = SETTINGS.nonRepeat.length;
-  SETTINGS.nonRepeat = SETTINGS.nonRepeat.filter(
-    (e) => !(e.sceneId === sceneId && e.tokenId === tokenId && e.soundId === soundId),
-  );
-  if (SETTINGS.nonRepeat.length === before) return;
-
-  game.settings.set(MODULE_ID, "nonRepeat", SETTINGS.nonRepeat);
-  const token = game.scenes.get(sceneId)?.tokens.get(tokenId);
-  if (token) token.update({ [`flags.${MODULE_ID}.playing.${soundId}`]: foundry.data.operators.ForcedDeletion });
-}
-
-/**
- * Persist a non-repeat entry and schedule its cleanup via setTimeout.
- * Called only on the responsible GM after creating a non-looping AmbientSound.
- * @param {TokenDocument} token
- * @param {string} soundId
- * @param {number} endTime Epoch ms when the sound is expected to finish.
- * @returns {Promise<void>}
- */
-async function scheduleNonRepeatCleanup(token, soundId, endTime) {
-  SETTINGS.nonRepeat.push({ sceneId: token.parent.id, tokenId: token.id, soundId, endTime });
-  await game.settings.set(MODULE_ID, "nonRepeat", SETTINGS.nonRepeat);
-  setTimeout(
-    () => _cleanupNonRepeat(token.parent.id, token.id, soundId),
-    Math.max(0, endTime - Date.now()),
-  );
-}
-
-/**
- * Called on canvasReady by the responsible GM. Reschedules pending non-repeat cleanups that
- * survived a page reload, and immediately clears entries that already expired while offline.
- * Must be awaited before playSounds so expired tokens are clean before new sounds are created.
- * @returns {Promise<void>}
- */
-export async function reconcileNonRepeat() {
-  const isResponsibleGM =
-    game.user.isGM &&
-    !game.users
-      .filter((u) => u.isGM && (u.active || u.isActive))
-      .some((other) => other.id < game.user.id);
-  if (!isResponsibleGM) return;
-
-  const now = Date.now();
-  const expired = SETTINGS.nonRepeat.filter((e) => e.endTime <= now);
-  const pending = SETTINGS.nonRepeat.filter((e) => e.endTime > now);
-
-  for (const entry of pending) {
-    setTimeout(
-      () => _cleanupNonRepeat(entry.sceneId, entry.tokenId, entry.soundId),
-      entry.endTime - now,
-    );
-  }
-
-  if (!expired.length) return;
-
-  SETTINGS.nonRepeat = pending;
-  game.settings.set(MODULE_ID, "nonRepeat", pending);
-
-  await Promise.all(
-    expired.map(({ sceneId, tokenId, soundId }) => {
-      const token = game.scenes.get(sceneId)?.tokens.get(tokenId);
-      return token?.update({ [`flags.${MODULE_ID}.playing.${soundId}`]: foundry.data.operators.ForcedDeletion });
-    }),
-  );
-}
-
-/**
- * GM-only creation of an AmbientSound attached to `token`. Non-GM clients forward via socket.
+ * GM-only creation of a repeat-mode AmbientSound attached to `token`. Non-GM clients
+ * forward via socket. Only fields the module actually configures are forwarded — the
+ * rest fall back to AmbientSoundDocument schema defaults.
  * @param {TokenDocument} token
  * @param {object} sound Sound definition stored on the actor's `sounds` flag.
  * @param {boolean} [setPosition=false] Re-anchor sound positions after creation.
@@ -301,47 +215,44 @@ export async function reconcileNonRepeat() {
  */
 export async function createSound(token, sound, setPosition = false) {
   if (!game.user.isGM) {
-    const message = {
+    game.socket?.emit(`module.${MODULE_ID}`, {
       handlerName: "sound",
       args: { tokenId: token.id, sceneId: token.parent.id, sound },
       type: "CREATE",
-    };
-    game.socket?.emit(`module.${MODULE_ID}`, message);
+    });
     return;
   }
 
-  const s = foundry.utils.deepClone(sound);
-  if (!s.radius) s.radius = 30;
-  s[`flags.${MODULE_ID}.autoGen`] = true;
-
-  // Store token/sound ids so the sync patch can schedule non-repeat cleanup
-  // with the real duration from the decoded audio buffer.
-  if (!sound.repeat) {
-    s[`flags.${MODULE_ID}.tokenId`] = token.id;
-    s[`flags.${MODULE_ID}.soundId`] = sound.soundId;
-  }
+  const channel = game.settings.get(MODULE_ID, "channel");
+  const s = {
+    path: sound.path,
+    radius: sound.radius ?? 30,
+    walls: !!sound.walls,
+    volume: sound.volume ?? 0.5,
+    repeat: true,
+    channel,
+    [`flags.${MODULE_ID}.autoGen`]: true,
+  };
 
   const doc = (await token.parent.createEmbeddedDocuments("AmbientSound", [s]))[0];
-
   await token.update({ [`flags.${MODULE_ID}.attached.${sound.soundId}`]: doc.id });
 
   if (setPosition) refreshSoundPosition(token);
 }
 
 /**
- * Re-anchor every AmbientSound attached to `token` at the token's current centre, batching all
- * updates into a single embedded-document write.
+ * Re-anchor every AmbientSound attached to `token` at the token's current centre,
+ * batching all updates into a single embedded-document write.
  * @param {TokenDocument} token
  */
 export function refreshSoundPosition(token) {
   const scene = token.parent;
   if (!game.user.isGM) {
-    const message = {
+    game.socket?.emit(`module.${MODULE_ID}`, {
       handlerName: "sound",
       args: { sceneId: scene.id, tokenId: token.id },
       type: "POSITIONS",
-    };
-    game.socket?.emit(`module.${MODULE_ID}`, message);
+    });
     return;
   }
 
@@ -364,5 +275,248 @@ export function refreshSoundPosition(token) {
       updates.push({ _id: ambientSound.id, ...center });
     }
     scene.updateEmbeddedDocuments("AmbientSound", updates);
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ *  One-shot (non-repeat) playback
+ *  No AmbientSound document is ever created. Listener tokens are snapshotted at
+ *  click time, every client plays locally if it owns at least one listener, and
+ *  the GM schedules a single flag-clear after the audio's duration elapses.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Resolve the audio URL (folder mode → random pick from the root of the folder),
+ * compute listener tokens within radius at click time, and broadcast a play message
+ * to every client. Non-GM forwards the request to the responsible GM.
+ * @param {TokenDocument} token
+ * @param {object} sound
+ * @returns {Promise<void>}
+ */
+export async function playOneShot(token, sound) {
+  if (!game.user.isGM) {
+    game.socket?.emit(`module.${MODULE_ID}`, {
+      handlerName: "sound",
+      type: "ONESHOT_REQUEST",
+      args: { sceneId: token.parent.id, tokenId: token.id, soundId: sound.soundId },
+    });
+    return;
+  }
+
+  let url = sound.path;
+  if (sound.sourceMode === "folder") {
+    url = await _pickRandomFromFolder(sound.path);
+    if (!url) {
+      ui.notifications?.warn(`Token Sounds: no audio files in folder "${sound.path}"`);
+      await token.update({
+        [`flags.${MODULE_ID}.playing.${sound.soundId}`]: foundry.data.operators.ForcedDeletion,
+      });
+      return;
+    }
+  }
+  if (!url) {
+    await token.update({
+      [`flags.${MODULE_ID}.playing.${sound.soundId}`]: foundry.data.operators.ForcedDeletion,
+    });
+    return;
+  }
+
+  const channel = game.settings.get(MODULE_ID, "channel");
+  const tokenIds = _computeListenersInRange(token, sound.radius ?? 30);
+
+  const payload = {
+    sceneId: token.parent.id,
+    tokenId: token.id,
+    soundId: sound.soundId,
+    url,
+    volume: sound.volume ?? 0.5,
+    channel,
+    tokenIds,
+  };
+
+  game.socket?.emit(`module.${MODULE_ID}`, {
+    handlerName: "sound",
+    type: "ONESHOT_PLAY",
+    args: payload,
+  });
+  // game.socket.emit does not loop back; play locally for the GM.
+  _onOneShotPlay(payload);
+
+  await _scheduleOneShotEnd(token.parent.id, token.id, sound.soundId, url);
+}
+
+/**
+ * Cancel a one-shot before its natural end (user toggled the tile off, or the
+ * cleanup timer fires after duration). GM broadcasts; non-GM forwards.
+ * @param {TokenDocument} token
+ * @param {string} soundId
+ */
+export function stopOneShot(token, soundId) {
+  if (!game.user.isGM) {
+    game.socket?.emit(`module.${MODULE_ID}`, {
+      handlerName: "sound",
+      type: "ONESHOT_STOP_REQUEST",
+      args: { sceneId: token.parent.id, tokenId: token.id, soundId },
+    });
+    return;
+  }
+  const payload = { sceneId: token.parent.id, tokenId: token.id, soundId };
+  game.socket?.emit(`module.${MODULE_ID}`, {
+    handlerName: "sound",
+    type: "ONESHOT_STOP",
+    args: payload,
+  });
+  _onOneShotStop(payload);
+}
+
+/**
+ * Decide whether this client plays the broadcast one-shot. Plays for the GM
+ * unconditionally; for players, only if they own at least one listener token.
+ * @param {object} payload
+ */
+async function _onOneShotPlay(payload) {
+  const { sceneId, tokenId, soundId, url, volume, channel, tokenIds } = payload;
+  const scene = game.scenes.get(sceneId);
+  if (!scene) return;
+
+  const shouldPlay = game.user.isGM
+    || tokenIds.some((id) => scene.tokens.get(id)?.isOwner);
+  if (!shouldPlay) return;
+
+  const key = `${tokenId}:${soundId}`;
+  _stopLocalOneShot(key);
+
+  const ctxSrc = game.audio?.[channel] ?? game.audio?.environment;
+  const sound = game.audio.create({
+    src: url,
+    context: ctxSrc ? new AudioContext(ctxSrc) : undefined,
+    singleton: false,
+  });
+  if (!sound) return;
+
+  try {
+    if (!sound.loaded) await sound.load();
+    sound.play({ volume, loop: false });
+    _activeOneShots.set(key, sound);
+    const duration = sound.duration > 0 ? sound.duration : 0;
+    // Local belt-and-suspenders cleanup, in case STOP broadcast races the natural end.
+    setTimeout(() => _stopLocalOneShot(key), (duration + 1) * 1000);
+  } catch (e) {
+    console.warn(`${MODULE_ID} | Failed to play one-shot ${url}`, e);
+    _activeOneShots.delete(key);
+  }
+}
+
+/**
+ * Cancel the local Sound for `<tokenId>:<soundId>` if one is registered.
+ * @param {object} payload
+ */
+function _onOneShotStop(payload) {
+  _stopLocalOneShot(`${payload.tokenId}:${payload.soundId}`);
+}
+
+/**
+ * Stop and unregister the local one-shot Sound bound to `key`, if any.
+ * @param {string} key
+ */
+function _stopLocalOneShot(key) {
+  const sound = _activeOneShots.get(key);
+  if (!sound) return;
+  _activeOneShots.delete(key);
+  try {
+    if (sound.playing) sound.stop();
+  } catch (e) {
+    /* swallow: stopping a sound that already ended is harmless */
+  }
+}
+
+/**
+ * GM-side: probe the audio's duration once (loaded into the local audio context)
+ * and schedule a single flag-clear after duration + 500ms padding. When the flag
+ * is cleared, the standard updateToken hook triggers `stopOneShot` which broadcasts
+ * a STOP to every client.
+ * @param {string} sceneId
+ * @param {string} tokenId
+ * @param {string} soundId
+ * @param {string} url
+ */
+async function _scheduleOneShotEnd(sceneId, tokenId, soundId, url) {
+  let duration = 5;
+  try {
+    const probe = game.audio.create({ src: url, singleton: false });
+    if (probe) {
+      if (!probe.loaded) await probe.load();
+      if (probe.duration > 0) duration = probe.duration;
+    }
+  } catch (e) {
+    console.warn(`${MODULE_ID} | Probe duration failed for ${url}`, e);
+  }
+  setTimeout(() => _endOneShot(sceneId, tokenId, soundId), (duration + 0.5) * 1000);
+}
+
+/**
+ * Clear the playing flag for a one-shot whose natural end has elapsed.
+ * Idempotent: if the flag was already cleared (e.g. the user toggled the tile),
+ * nothing happens.
+ * @param {string} sceneId
+ * @param {string} tokenId
+ * @param {string} soundId
+ */
+function _endOneShot(sceneId, tokenId, soundId) {
+  const token = game.scenes.get(sceneId)?.tokens.get(tokenId);
+  if (!token) return;
+  const playing = token.getFlag(MODULE_ID, "playing") ?? {};
+  if (!(soundId in playing)) return;
+  token.update({ [`flags.${MODULE_ID}.playing.${soundId}`]: foundry.data.operators.ForcedDeletion });
+}
+
+/**
+ * Compute the ids of every token in `sourceToken.parent` whose centre lies within
+ * `radius` grid units of `sourceToken`'s centre. The source token itself is included.
+ * @param {TokenDocument} sourceToken
+ * @param {number} radius In grid distance units (e.g. "feet").
+ * @returns {string[]}
+ */
+function _computeListenersInRange(sourceToken, radius) {
+  const scene = sourceToken.parent;
+  if (!scene) return [];
+  const size = canvas.dimensions?.size ?? scene.grid?.size ?? 100;
+  const dist = canvas.dimensions?.distance ?? scene.grid?.distance ?? 5;
+  const pxPerUnit = size / dist;
+  const r2 = (radius * pxPerUnit) ** 2;
+
+  const cx = sourceToken._source.x + (sourceToken.width * size) / 2;
+  const cy = sourceToken._source.y + (sourceToken.height * size) / 2;
+
+  const ids = [];
+  for (const t of scene.tokens) {
+    const tx = t._source.x + (t.width * size) / 2;
+    const ty = t._source.y + (t.height * size) / 2;
+    if ((tx - cx) ** 2 + (ty - cy) ** 2 <= r2) ids.push(t.id);
+  }
+  return ids;
+}
+
+/**
+ * List the root of `folderPath`, filter to known audio extensions, and return one
+ * file URL chosen uniformly at random. Returns null on browse error or empty pool.
+ * Subdirectories are not recursed.
+ * @param {string} folderPath
+ * @returns {Promise<string|null>}
+ */
+async function _pickRandomFromFolder(folderPath) {
+  if (!folderPath) return null;
+  const FPCls = foundry.applications.apps.FilePicker.implementation ?? foundry.applications.apps.FilePicker;
+  try {
+    const res = await FPCls.browse("data", folderPath);
+    const files = (res?.files ?? []).filter((f) => {
+      const lc = f.toLowerCase();
+      return AUDIO_EXTENSIONS.some((ext) => lc.endsWith(ext));
+    });
+    if (!files.length) return null;
+    return files[Math.floor(Math.random() * files.length)];
+  } catch (e) {
+    console.warn(`${MODULE_ID} | Failed to browse folder ${folderPath}`, e);
+    return null;
   }
 }
