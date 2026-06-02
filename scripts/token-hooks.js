@@ -1,16 +1,16 @@
 import { MODULE_ID } from "./constants.js";
 import { openCustomConfig } from "./ambient-sound-custom-config.js";
-import { stopSounds, playSounds, refreshSoundPosition, deleteToken } from "./token-sounds.js";
+import { stopSounds, playSounds, refreshSoundPosition, deleteToken, reconcileNonRepeat } from "./token-sounds.js";
 
 /**
  * Wire every Token/Actor lifecycle hook the module reacts to. Called once from the `init` hook.
  */
 export function registerTokenHooks() {
-  Hooks.on("canvasReady", () => {
-    if (game.user.isGM) {
-      for (const token of canvas.tokens.placeables) {
-        playSounds(token.document);
-      }
+  Hooks.on("canvasReady", async () => {
+    if (!game.user.isGM) return;
+    await reconcileNonRepeat();
+    for (const token of canvas.tokens.placeables) {
+      playSounds(token.document);
     }
   });
 

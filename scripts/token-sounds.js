@@ -14,16 +14,6 @@ Hooks.on("init", () => {
     default: [],
     onChange: (val) => {
       SETTINGS.nonRepeat = val;
-
-      const isResponsibleGM =
-        game.user.isGM &&
-        !game.users
-          .filter((user) => user.isGM && (user.active || user.isActive))
-          .some((other) => other.id < game.user.id);
-
-      if (isResponsibleGM) {
-        if (val.length) startTicker();
-      }
     },
   });
   SETTINGS.nonRepeat = game.settings.get(MODULE_ID, "nonRepeat");
@@ -51,20 +41,10 @@ Hooks.on("init", () => {
     } else if (message.handlerName === "sound" && message.type === "POSITIONS") {
       const scene = game.scenes.get(args.sceneId);
       if (scene) refreshSoundPosition(scene.tokens.get(args.tokenId));
-    } else if (message.handlerName === "sound" && message.type === "NONREPEAT") {
-      const scene = game.scenes.get(args.sceneId);
-      if (scene) setNonRepeatTicker(scene.tokens.get(args.tokenId), args.soundId, args.endTime);
     }
   });
 
   globalThis.SoundOfToken = SoundOfToken;
-});
-
-Hooks.on("ready", () => {
-  const isResponsibleGM = !game.users
-    .filter((user) => user.isGM && (user.active || user.isActive))
-    .some((other) => other.id < game.user.id);
-  if (isResponsibleGM) startTicker();
 });
 
 /**
@@ -204,55 +184,83 @@ function endNonRepeatEarly(tokenId, soundId, sceneId) {
     (o) => o.soundId !== soundId || o.tokenId !== tokenId || o.sceneId !== sceneId,
   );
   if (SETTINGS.nonRepeat.length !== newRepeat.length) {
+    SETTINGS.nonRepeat = newRepeat;
     game.settings.set(MODULE_ID, "nonRepeat", newRepeat);
   }
 }
 
 /**
- * Canvas ticker handler. When a tracked non-looping sound has finished, clear the corresponding
- * token playing flag so the UI reflects the stopped state.
+ * Remove a non-repeat tracker entry and clear the token's playing flag.
+ * Safe to call when the entry was already removed (stale timer after a manual stop).
+ * @param {string} sceneId
+ * @param {string} tokenId
+ * @param {string} soundId
  */
-function _processTick() {
-  if (SETTINGS.nonRepeat.length) {
-    const currentTime = Date.now();
+function _cleanupNonRepeat(sceneId, tokenId, soundId) {
+  const before = SETTINGS.nonRepeat.length;
+  SETTINGS.nonRepeat = SETTINGS.nonRepeat.filter(
+    (e) => !(e.sceneId === sceneId && e.tokenId === tokenId && e.soundId === soundId),
+  );
+  if (SETTINGS.nonRepeat.length === before) return;
 
-    const nR = SETTINGS.nonRepeat.find((n) => n.endTime < currentTime);
-    if (nR) {
-      canvas.app.ticker.remove(_processTick);
-      const token = game.scenes.get(nR.sceneId)?.tokens.get(nR.tokenId);
-      if (token) token.update({ [`flags.${MODULE_ID}.playing.-=${nR.soundId}`]: null });
-
-      SETTINGS.nonRepeat = SETTINGS.nonRepeat.filter((n) => n.endTime > currentTime);
-      game.settings.set(MODULE_ID, "nonRepeat", SETTINGS.nonRepeat);
-    }
-  } else {
-    canvas.app.ticker.remove(_processTick);
-  }
+  game.settings.set(MODULE_ID, "nonRepeat", SETTINGS.nonRepeat);
+  const token = game.scenes.get(sceneId)?.tokens.get(tokenId);
+  if (token) token.update({ [`flags.${MODULE_ID}.playing.-=${soundId}`]: null });
 }
 
 /**
- * Track a non-looping sound's expected end time so the playing flag is cleared automatically.
+ * Persist a non-repeat entry and schedule its cleanup via setTimeout.
+ * Called only on the responsible GM after creating a non-looping AmbientSound.
  * @param {TokenDocument} token
  * @param {string} soundId
  * @param {number} endTime Epoch ms when the sound is expected to finish.
+ * @returns {Promise<void>}
  */
-async function setNonRepeatTicker(token, soundId, endTime) {
-  if (!game.user.isGM) {
-    const message = {
-      handlerName: "sound",
-      args: { tokenId: token.id, sceneId: token.parent.id, soundId, endTime },
-      type: "NONREPEAT",
-    };
-    game.socket?.emit(`module.${MODULE_ID}`, message);
-    return;
-  }
-
+async function scheduleNonRepeatCleanup(token, soundId, endTime) {
   SETTINGS.nonRepeat.push({ sceneId: token.parent.id, tokenId: token.id, soundId, endTime });
   await game.settings.set(MODULE_ID, "nonRepeat", SETTINGS.nonRepeat);
+  setTimeout(
+    () => _cleanupNonRepeat(token.parent.id, token.id, soundId),
+    Math.max(0, endTime - Date.now()),
+  );
 }
 
-function startTicker() {
-  canvas.app.ticker.add(_processTick);
+/**
+ * Called on canvasReady by the responsible GM. Reschedules pending non-repeat cleanups that
+ * survived a page reload, and immediately clears entries that already expired while offline.
+ * Must be awaited before playSounds so expired tokens are clean before new sounds are created.
+ * @returns {Promise<void>}
+ */
+export async function reconcileNonRepeat() {
+  const isResponsibleGM =
+    game.user.isGM &&
+    !game.users
+      .filter((u) => u.isGM && (u.active || u.isActive))
+      .some((other) => other.id < game.user.id);
+  if (!isResponsibleGM) return;
+
+  const now = Date.now();
+  const expired = SETTINGS.nonRepeat.filter((e) => e.endTime <= now);
+  const pending = SETTINGS.nonRepeat.filter((e) => e.endTime > now);
+
+  for (const entry of pending) {
+    setTimeout(
+      () => _cleanupNonRepeat(entry.sceneId, entry.tokenId, entry.soundId),
+      entry.endTime - now,
+    );
+  }
+
+  if (!expired.length) return;
+
+  SETTINGS.nonRepeat = pending;
+  game.settings.set(MODULE_ID, "nonRepeat", pending);
+
+  await Promise.all(
+    expired.map(({ sceneId, tokenId, soundId }) => {
+      const token = game.scenes.get(sceneId)?.tokens.get(tokenId);
+      return token?.update({ [`flags.${MODULE_ID}.playing.-=${soundId}`]: null });
+    }),
+  );
 }
 
 /**
@@ -277,13 +285,8 @@ export async function createSound(token, sound, setPosition = false) {
   if (!s.radius) s.radius = 30;
   s[`flags.${MODULE_ID}.autoGen`] = true;
 
-  // Pre-load so duration is available below for the non-repeat ticker on first scene visit.
-  const audio = game.audio.create({ src: s.path, preload: false });
-  if (audio) {
-    if (!audio.loaded && audio._state !== audio.constructor.STATES.LOADING) {
-      await audio.load();
-    }
-  }
+  const audio = game.audio.create({ src: s.path });
+  if (audio && !audio.loaded) await audio.load().catch(() => {});
 
   const doc = (await token.parent.createEmbeddedDocuments("AmbientSound", [s]))[0];
 
@@ -293,7 +296,7 @@ export async function createSound(token, sound, setPosition = false) {
 
   const duration = audio?.duration;
   if (duration && !doc.repeat) {
-    setNonRepeatTicker(token, sound.soundId, Date.now() + duration * 1000 + 1000);
+    scheduleNonRepeatCleanup(token, sound.soundId, Date.now() + duration * 1000 + 1000);
   }
 }
 
