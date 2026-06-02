@@ -17,7 +17,7 @@ export function registerTokenHooks() {
   // A freshly created token must not inherit the previous template token's attached AmbientSound ids.
   Hooks.on("preCreateToken", (token, data, options, userId) => {
     if (game.user.id === userId && data.flags?.[MODULE_ID]?.attached) {
-      token.updateSource({ [`flags.${MODULE_ID}.-=attached`]: null });
+      token.updateSource({ [`flags.${MODULE_ID}.attached`]: foundry.data.operators.ForcedDeletion });
     }
   });
 
@@ -30,13 +30,39 @@ export function registerTokenHooks() {
   });
 
   Hooks.on("updateToken", async (token, change, options, userId) => {
+    // Sync soundboard tile and HUD button state for every client when playing changes.
+    const playingChange = change.flags?.[MODULE_ID]?.playing;
+    if (playingChange) {
+      const hud = canvas.tokens.hud;
+      if (hud.object?.document === token) {
+        for (const [soundId, play] of Object.entries(playingChange)) {
+          const soundEl = hud.element?.querySelector(`.sound[data-sound-id="${soundId}"]`);
+          if (!soundEl) continue;
+          const isStopped = play === foundry.data.operators.ForcedDeletion || !play;
+          soundEl.classList.toggle("playing", !isStopped);
+          if (isStopped) {
+            soundEl.querySelector("i.fa-volume")?.remove();
+          } else if (!soundEl.querySelector("i.fa-volume")) {
+            const icon = document.createElement("i");
+            icon.classList.add("fa-solid", "fa-volume", "fa-beat");
+            soundEl.appendChild(icon);
+          }
+        }
+        const button = hud.element?.querySelector(".control-icon.token-sounds");
+        if (button) {
+          const stillPlaying = !foundry.utils.isEmpty(token.getFlag(MODULE_ID, "playing") ?? {});
+          button.classList.toggle("playing", stillPlaying);
+        }
+      }
+    }
+
     if (game.user.id !== userId) return;
 
     const flags = change.flags?.[MODULE_ID];
     if (flags) {
       if (flags.sounds) {
-        for (const soundId of Object.keys(flags.sounds)) {
-          if (soundId.startsWith("-=")) stopSounds(token, [soundId.substring(2)]);
+        for (const [soundId, val] of Object.entries(flags.sounds)) {
+          if (val === foundry.data.operators.ForcedDeletion) stopSounds(token, [soundId]);
           else {
             stopSounds(token, [soundId]);
             playSounds(token, [soundId]);
@@ -46,8 +72,7 @@ export function registerTokenHooks() {
 
       if (flags.playing) {
         for (const [soundId, play] of Object.entries(flags.playing)) {
-          if (soundId.startsWith("-=")) stopSounds(token, [soundId.substring(2)]);
-          else if (!play) stopSounds(token, [soundId]);
+          if (play === foundry.data.operators.ForcedDeletion || !play) stopSounds(token, [soundId]);
           else playSounds(token, [soundId]);
         }
       }
@@ -267,7 +292,7 @@ function _onSoundClick(event, token) {
   const playing = (token.getFlag(MODULE_ID, "playing") ?? {})[soundId];
   const update = {};
 
-  if (playing) update[`flags.${MODULE_ID}.playing.-=` + soundId] = null;
+  if (playing) update[`flags.${MODULE_ID}.playing.` + soundId] = foundry.data.operators.ForcedDeletion;
   else update[`flags.${MODULE_ID}.playing.` + soundId] = true;
 
   token.update(update);

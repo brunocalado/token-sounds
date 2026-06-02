@@ -62,6 +62,35 @@ function patchAmbientSound() {
     const result = await originalSync.apply(this, args);
     if (this.sound?.playing && this.document.getFlag(MODULE_ID, "autoGen")) {
       this.sound.loop = this.document.repeat;
+
+      // Schedule one-shot cleanup on the first sync where the sound is confirmed playing.
+      // this.sound.duration is guaranteed available at this point (buffer already decoded).
+      if (!this.document.repeat && !this._nonRepeatScheduled) {
+        const isResponsibleGM =
+          game.user.isGM &&
+          !game.users
+            .filter((u) => u.isGM && (u.active || u.isActive))
+            .some((other) => other.id < game.user.id);
+
+        if (isResponsibleGM) {
+          const tokenId = this.document.getFlag(MODULE_ID, "tokenId");
+          const soundId = this.document.getFlag(MODULE_ID, "soundId");
+          const alreadyTracked = SETTINGS.nonRepeat.some(
+            (e) => e.tokenId === tokenId && e.soundId === soundId,
+          );
+          if (!alreadyTracked && tokenId && soundId && this.sound.duration > 0) {
+            this._nonRepeatScheduled = true;
+            const token = this.document.parent?.tokens.get(tokenId);
+            if (token) {
+              scheduleNonRepeatCleanup(
+                token,
+                soundId,
+                Date.now() + this.sound.duration * 1000 + 500,
+              );
+            }
+          }
+        }
+      }
     }
     return result;
   };
@@ -147,7 +176,7 @@ export function deleteToken(token) {
 export function deleteSound(token, soundId, ambientSoundId) {
   const ambientSound = token.parent?.sounds.get(ambientSoundId);
   if (ambientSound) deleteSoundDocument(ambientSound, token, soundId);
-  token.update({ [`flags.${MODULE_ID}.attached.-=${soundId}`]: null });
+  token.update({ [`flags.${MODULE_ID}.attached.${soundId}`]: foundry.data.operators.ForcedDeletion });
 }
 
 /**
@@ -205,7 +234,7 @@ function _cleanupNonRepeat(sceneId, tokenId, soundId) {
 
   game.settings.set(MODULE_ID, "nonRepeat", SETTINGS.nonRepeat);
   const token = game.scenes.get(sceneId)?.tokens.get(tokenId);
-  if (token) token.update({ [`flags.${MODULE_ID}.playing.-=${soundId}`]: null });
+  if (token) token.update({ [`flags.${MODULE_ID}.playing.${soundId}`]: foundry.data.operators.ForcedDeletion });
 }
 
 /**
@@ -258,7 +287,7 @@ export async function reconcileNonRepeat() {
   await Promise.all(
     expired.map(({ sceneId, tokenId, soundId }) => {
       const token = game.scenes.get(sceneId)?.tokens.get(tokenId);
-      return token?.update({ [`flags.${MODULE_ID}.playing.-=${soundId}`]: null });
+      return token?.update({ [`flags.${MODULE_ID}.playing.${soundId}`]: foundry.data.operators.ForcedDeletion });
     }),
   );
 }
@@ -285,19 +314,18 @@ export async function createSound(token, sound, setPosition = false) {
   if (!s.radius) s.radius = 30;
   s[`flags.${MODULE_ID}.autoGen`] = true;
 
-  const audio = game.audio.create({ src: s.path });
-  if (audio && !audio.loaded) await audio.load().catch(() => {});
+  // Store token/sound ids so the sync patch can schedule non-repeat cleanup
+  // with the real duration from the decoded audio buffer.
+  if (!sound.repeat) {
+    s[`flags.${MODULE_ID}.tokenId`] = token.id;
+    s[`flags.${MODULE_ID}.soundId`] = sound.soundId;
+  }
 
   const doc = (await token.parent.createEmbeddedDocuments("AmbientSound", [s]))[0];
 
   await token.update({ [`flags.${MODULE_ID}.attached.${sound.soundId}`]: doc.id });
 
   if (setPosition) refreshSoundPosition(token);
-
-  const duration = audio?.duration;
-  if (duration && !doc.repeat) {
-    scheduleNonRepeatCleanup(token, sound.soundId, Date.now() + duration * 1000 + 1000);
-  }
 }
 
 /**
@@ -322,7 +350,7 @@ export function refreshSoundPosition(token) {
   for (const [soundId, ambientSoundId] of Object.entries(attached)) {
     const ambientSound = scene.sounds.get(ambientSoundId);
     if (ambientSound) ambientSounds.push(ambientSound);
-    else token.update({ [`flags.${MODULE_ID}.attached.-=${soundId}`]: null });
+    else token.update({ [`flags.${MODULE_ID}.attached.${soundId}`]: foundry.data.operators.ForcedDeletion });
   }
 
   if (ambientSounds.length) {

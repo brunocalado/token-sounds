@@ -44,6 +44,10 @@
     .sound {
       border-left: 1px solid rgba(0, 0, 0, 0);
       border-right: 1px solid rgba(0, 0, 0, 0);
+
+      &.playing img {
+        opacity: 0;
+      }
     }
 
     .sound.drag-left {

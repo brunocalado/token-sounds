@@ -58,7 +58,7 @@ class AmbientSoundCustomConfig extends foundry.applications.sheets.AmbientSoundC
    */
   static async remove() {
     const formData = this._getSubmitData();
-    const update = { [`flags.${MODULE_ID}.sounds.-=${formData.soundId}`]: null };
+    const update = { [`flags.${MODULE_ID}.sounds.${formData.soundId}`]: foundry.data.operators.ForcedDeletion };
     this.dataSource.update(update);
   }
 

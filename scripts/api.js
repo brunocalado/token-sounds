@@ -42,7 +42,7 @@ export class SoundOfToken {
       const soundId = Object.keys(sounds).find((id) => sounds[id].description === description);
       if (!soundId) continue;
 
-      t.update({ [`flags.${MODULE_ID}.playing.-=${soundId}`]: null });
+      t.update({ [`flags.${MODULE_ID}.playing.${soundId}`]: foundry.data.operators.ForcedDeletion });
     }
   }
 }
