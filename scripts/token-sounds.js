@@ -150,7 +150,7 @@ export async function playSounds(token, soundIds) {
  * @param {TokenDocument} token
  * @param {string[]} [soundIds] Optional subset; defaults to every id in the playing flag.
  */
-export function stopSounds(token, soundIds) {
+export async function stopSounds(token, soundIds) {
   const playing = token.getFlag(MODULE_ID, "playing") ?? {};
   const attached = token.getFlag(MODULE_ID, "attached") ?? {};
   // Default to every attached sound: those are the candidates to tear down. Iterating
@@ -159,7 +159,7 @@ export function stopSounds(token, soundIds) {
 
   for (const soundId of soundIds) {
     if (attached[soundId] && !playing[soundId]) {
-      deleteSound(token, soundId, attached[soundId]);
+      await deleteSound(token, soundId, attached[soundId]);
     }
   }
 }
@@ -182,10 +182,13 @@ export function deleteToken(token) {
  * @param {string} soundId
  * @param {string} ambientSoundId
  */
-export function deleteSound(token, soundId, ambientSoundId) {
+export async function deleteSound(token, soundId, ambientSoundId) {
   const ambientSound = token.parent?.sounds.get(ambientSoundId);
-  if (ambientSound) deleteSoundDocument(ambientSound, token, soundId);
-  token.update({ [`flags.${MODULE_ID}.attached.${soundId}`]: foundry.data.operators.ForcedDeletion });
+  if (ambientSound) await deleteSoundDocument(ambientSound, token, soundId);
+  // Clear via unsetFlag: a ForcedDeletion value does not reliably remove the nested key,
+  // which would leave a stale `attached` entry — blocking re-creation on the next play
+  // and causing a double-delete (the AmbientSound is already gone) on the next reconcile.
+  await token.unsetFlag(MODULE_ID, `attached.${soundId}`);
 }
 
 /**
@@ -194,7 +197,7 @@ export function deleteSound(token, soundId, ambientSoundId) {
  * @param {TokenDocument} token
  * @param {string} soundId
  */
-function deleteSoundDocument(doc, token, soundId) {
+async function deleteSoundDocument(doc, token, soundId) {
   if (!game.user.isGM) {
     game.socket?.emit(`module.${MODULE_ID}`, {
       handlerName: "sound",
@@ -203,7 +206,7 @@ function deleteSoundDocument(doc, token, soundId) {
     });
     return;
   }
-  doc.delete();
+  await doc.delete();
 }
 
 /**
@@ -263,7 +266,7 @@ export function refreshSoundPosition(token) {
   for (const [soundId, ambientSoundId] of Object.entries(attached)) {
     const ambientSound = scene.sounds.get(ambientSoundId);
     if (ambientSound) ambientSounds.push(ambientSound);
-    else token.update({ [`flags.${MODULE_ID}.attached.${soundId}`]: foundry.data.operators.ForcedDeletion });
+    else token.unsetFlag(MODULE_ID, `attached.${soundId}`);
   }
 
   if (ambientSounds.length) {
@@ -310,16 +313,12 @@ export async function playOneShot(token, sound) {
     url = await _pickRandomFromFolder(sound.path);
     if (!url) {
       ui.notifications?.warn(`Token Sounds: no audio files in folder "${sound.path}"`);
-      await token.update({
-        [`flags.${MODULE_ID}.playing.${sound.soundId}`]: foundry.data.operators.ForcedDeletion,
-      });
+      await token.unsetFlag(MODULE_ID, `playing.${sound.soundId}`);
       return;
     }
   }
   if (!url) {
-    await token.update({
-      [`flags.${MODULE_ID}.playing.${sound.soundId}`]: foundry.data.operators.ForcedDeletion,
-    });
+    await token.unsetFlag(MODULE_ID, `playing.${sound.soundId}`);
     return;
   }
 
@@ -469,7 +468,7 @@ function _endOneShot(sceneId, tokenId, soundId) {
   if (!token) return;
   const playing = token.getFlag(MODULE_ID, "playing") ?? {};
   if (!(soundId in playing)) return;
-  token.update({ [`flags.${MODULE_ID}.playing.${soundId}`]: foundry.data.operators.ForcedDeletion });
+  token.unsetFlag(MODULE_ID, `playing.${soundId}`);
 }
 
 /**

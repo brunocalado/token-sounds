@@ -1,6 +1,7 @@
 import { MODULE_ID } from "./constants.js";
 import { openSoundConfig } from "./sound-config.js";
 import {
+  deleteSound,
   deleteToken,
   playOneShot,
   playSounds,
@@ -83,7 +84,7 @@ export function registerTokenHooks() {
       // even though the cleared flag key is absent from the change. One-shots no longer
       // touch this flag — they are dispatched directly on click.
       if (flags.sounds || flags.playing) {
-        stopSounds(token);
+        await stopSounds(token);
         await playSounds(token);
       }
     }
@@ -101,7 +102,7 @@ export function registerTokenHooks() {
       // A removed sound leaves its playing/attached flags behind on the token; clear the
       // orphaned playing flag first so the reconcile below tears down its AmbientSound.
       if (soundsChanged) await _clearOrphanedPlaying(t, sounds);
-      stopSounds(t);
+      await stopSounds(t);
       await playSounds(t);
       if (soundsChanged) await _refreshHudSoundboard(t);
     }
@@ -164,16 +165,10 @@ async function _cleanupStuckOneShots(token) {
   const dataSource = game.actors.get(token.actorId) ?? token;
   const sounds = dataSource.getFlag(MODULE_ID, "sounds") ?? {};
   const playing = token.getFlag(MODULE_ID, "playing") ?? {};
-  const update = {};
-  let dirty = false;
   for (const soundId of Object.keys(playing)) {
     const s = sounds[soundId];
-    if (s && !s.repeat) {
-      update[`flags.${MODULE_ID}.playing.${soundId}`] = foundry.data.operators.ForcedDeletion;
-      dirty = true;
-    }
+    if (s && !s.repeat) await token.unsetFlag(MODULE_ID, `playing.${soundId}`);
   }
-  if (dirty) await token.update(update);
 }
 
 /**
@@ -186,8 +181,14 @@ async function _cleanupStuckOneShots(token) {
  */
 async function _clearOrphanedPlaying(token, sounds) {
   const playing = token.getFlag(MODULE_ID, "playing") ?? {};
-  for (const soundId of Object.keys(playing)) {
-    if (!sounds[soundId]) await token.unsetFlag(MODULE_ID, `playing.${soundId}`);
+  const attached = token.getFlag(MODULE_ID, "attached") ?? {};
+  const orphans = new Set([...Object.keys(playing), ...Object.keys(attached)].filter((id) => !sounds[id]));
+
+  for (const soundId of orphans) {
+    // Tear down the orphan's AmbientSound and clear `attached` first, so the reconcile
+    // triggered by clearing `playing` below finds nothing left to delete (no double-delete).
+    if (attached[soundId]) await deleteSound(token, soundId, attached[soundId]);
+    if (soundId in playing) await token.unsetFlag(MODULE_ID, `playing.${soundId}`);
   }
 }
 
