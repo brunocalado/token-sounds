@@ -3,7 +3,8 @@
 ## [Fixed]
 - Ícone pulsante verde (`fa-beat`) não aparece mais em sons non-repeat; o efeito visual de loop agora é exclusivo de sons com `repeat: true`.
 - Imagem do tile de som non-repeat não some mais durante a reprodução: a classe CSS `playing` (que esconde o `<img>`) agora só é aplicada em sons repeat.
-- Botão Remove agora deleta o som com `setFlag` (read-modify-write explícito) em vez de `ForcedDeletion` em caminho aninhado, garantindo que a deleção funcione em qualquer build do Foundry V14.
+- Botão Remove agora deleta o som de fato. O `setFlag` (read-modify-write) anterior não removia a entrada porque o update do Foundry é recursivo por padrão e mesclava o mapa de volta com a chave que tentávamos apagar. Agora usa `unsetFlag(MODULE_ID, "sounds.<id>")`, a API canônica de deleção (sem aviso de `-=key` legado).
+- Clique com o botão direito em um tile do HUD não abre mais o menu de contexto nativo do browser. O `stopPropagation` impedia o handler do canvas (que normalmente chama `preventDefault`) de rodar, então agora chamamos `preventDefault` explicitamente no listener do tile.
 - Após o Remove, o painel do soundboard é atualizado imediatamente via `_refreshHudSoundboard` acionado pelo hook `updateActor`.
 - Contextmenu no tile não fecha mais o HUD inadvertidamente (adicionado `stopPropagation`).
 - `updateActor` agora usa `for...of` com `await` em vez de `forEach` com callback async, garantindo que `playSounds` complete antes de `_refreshHudSoundboard` reconstruir o painel.

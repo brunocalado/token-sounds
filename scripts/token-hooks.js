@@ -226,6 +226,9 @@ async function _onButtonClick(event, hud) {
 function _bindMenuListeners(wrapper, token, actor) {
   wrapper.querySelectorAll(".sound.editable").forEach((el) => {
     el.addEventListener("contextmenu", (e) => {
+      // Suppress the native browser context menu: stopPropagation alone keeps the canvas
+      // handler (which normally calls preventDefault) from running, so do it explicitly here.
+      e.preventDefault();
       // Prevent canvas contextmenu handler from dismissing the HUD while the config sheet opens.
       e.stopPropagation();
       _onSoundRightClick(e, actor);

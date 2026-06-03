@@ -152,13 +152,14 @@ class SoundConfigSheet extends foundry.applications.api.HandlebarsApplicationMix
 
   /**
    * Remove the current sound entry from the data source. `this` is the sheet.
-   * Uses an explicit read-modify-write instead of ForcedDeletion to guarantee
-   * the nested flag key is deleted in every Foundry V14 build.
+   * Uses `unsetFlag` with the nested key path: a read-modify-write via `setFlag`
+   * would be merged back onto the existing map (Foundry updates are recursive by
+   * default), leaving the entry in place. `unsetFlag` is the canonical deletion
+   * API, so core applies the build-correct deletion mechanism without emitting
+   * the legacy `-=key` deprecation warning.
    */
   static async #onRemove() {
-    const sounds = foundry.utils.deepClone(this.dataSource.getFlag(MODULE_ID, "sounds") ?? {});
-    delete sounds[this.soundId];
-    await this.dataSource.setFlag(MODULE_ID, "sounds", sounds);
+    await this.dataSource.unsetFlag(MODULE_ID, `sounds.${this.soundId}`);
     this.close();
   }
 
