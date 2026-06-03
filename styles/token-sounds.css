@@ -48,6 +48,17 @@
       }
     }
 
+    .sound-type-badge {
+      position: absolute;
+      bottom: 2px;
+      right: 3px;
+      font-size: 9px;
+      color: var(--color-text-secondary);
+      opacity: 0.75;
+      pointer-events: none;
+      z-index: 1;
+    }
+
     .sound-control .fa-volume {
       z-index: 0;
       top: 10px;

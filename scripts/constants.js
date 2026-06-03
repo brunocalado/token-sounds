@@ -10,4 +10,4 @@ export const MODULE_ID = "token-sounds";
  * for non-repeat random playback. Match is case-insensitive at use sites.
  * @type {string[]}
  */
-export const AUDIO_EXTENSIONS = [".mp3", ".ogg", ".wav", ".flac", ".m4a", ".webm", ".opus"];
+export const AUDIO_EXTENSIONS = [".mp3", ".ogg", ".wav"];
