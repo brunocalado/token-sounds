@@ -1,9 +1,9 @@
 {
   "id": "token-sounds",
-  "title": "Sound of Token",
+  "title": "Token Audio FX",
   "description": "Play ambient sounds through tokens.",
 
-  "version": "0.0.2",
+  "version": "0.0.3",
 
   "compatibility": {
     "minimum": 14,
