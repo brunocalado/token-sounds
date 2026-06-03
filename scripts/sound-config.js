@@ -20,8 +20,6 @@ export async function openSoundConfig(data, dataSource, create = true) {
 class SoundConfigSheet extends foundry.applications.api.HandlebarsApplicationMixin(
   foundry.applications.api.ApplicationV2,
 ) {
-  static BASE_APPLICATION = SoundConfigSheet;
-
   static DEFAULT_OPTIONS = {
     classes: [MODULE_ID, "sound-config"],
     tag: "form",

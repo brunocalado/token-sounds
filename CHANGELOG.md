@@ -1,6 +1,7 @@
 # 0.0.2
 
 ## [Fixed]
+- `SoundConfigSheet` (botão "+" do soundboard) voltou a abrir como janela flutuante. A definição incorreta de `BASE_APPLICATION` apontando para a própria classe fazia o Foundry ignorar as `DEFAULT_OPTIONS` da `ApplicationV2` (`window.frame`/`window.positioned`): o formulário era inserido no fluxo do documento — não abria de fato e empurrava o sidebar direito para a esquerda.
 - Sons non-repeat agora são removidos corretamente quando expiram, mesmo após reload do GM.
 - Duration do áudio agora é lida do buffer decoded no momento do play, garantindo que o timer sempre seja agendado.
 - Ícone de estado desligado (imagem do tile) não aparece mais ao mesmo tempo que o ícone verde pulsante.
