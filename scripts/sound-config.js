@@ -140,8 +140,11 @@ class SoundConfigSheet extends foundry.applications.api.HandlebarsApplicationMix
   static async #onSubmit(event, form, formData) {
     const data = formData.object;
     data.soundId = this.soundId;
-    // Enforce that folder mode is never persisted on repeat sounds.
-    if (data.repeat) data.sourceMode = "single";
+    // Enforce that folder mode and turn-start trigger are never persisted on repeat sounds.
+    if (data.repeat) {
+      data.sourceMode = "single";
+      data.turnStart = false;
+    }
 
     const update = {};
     for (const [k, v] of Object.entries(data)) {

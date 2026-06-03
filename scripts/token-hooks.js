@@ -108,6 +108,25 @@ export function registerTokenHooks() {
     }
   });
 
+  Hooks.on("combatTurnChange", async (combat, prior, current) => {
+    if (!game.user.isGM) return;
+    const isResponsibleGM = !game.users
+      .filter((u) => u.isGM && (u.active || u.isActive))
+      .some((other) => other.id < game.user.id);
+    if (!isResponsibleGM) return;
+    if (!combat.started) return;
+
+    const token = combat.combatant?.token;
+    if (!token) return;
+
+    const dataSource = game.actors.get(token.actorId) ?? token;
+    const sounds = dataSource.getFlag(MODULE_ID, "sounds") ?? {};
+    const turnStartSounds = Object.values(sounds).filter((s) => !s.repeat && s.turnStart);
+    for (const sound of turnStartSounds) {
+      await playOneShot(token, sound);
+    }
+  });
+
   Hooks.on("renderTokenHUD", (hud, html, token) => {
     if (!hud._soundBoard || hud._soundBoard.id !== hud.object.id)
       hud._soundBoard = { id: hud.object.id, active: false };

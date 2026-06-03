@@ -18,6 +18,7 @@ export class SoundEntry extends foundry.abstract.DataModel {
       radius:      new f.NumberField({ required: true, min: 0, initial: 30 }),
       volume:      new f.NumberField({ required: true, min: 0, max: 1, initial: 0.5 }),
       repeat:      new f.BooleanField({ initial: false }),
+      turnStart:   new f.BooleanField({ initial: false }),
       walls:       new f.BooleanField({ initial: false }),
       sort:        new f.NumberField({ required: false, integer: true, initial: 0 }),
     };
