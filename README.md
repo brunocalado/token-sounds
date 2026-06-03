@@ -96,11 +96,30 @@ Whenever a player triggers a sound, the request is forwarded to the active GM to
 
 ---
 
+## Default Sounds by Actor Type
+
+Instead of configuring the same sound on every individual actor, you can define a **default soundboard for each actor type** (e.g. *npc*, *character*, or any type provided by your game system). Every token whose actor matches that type will automatically show those sounds in its HUD.
+
+To open the editor, go to **Game Settings → Module Settings → Token Audio FX** and click the **Configure** button next to *Default Sounds by Actor Type*. The editor lists every registered actor type; use the **+** button under a type to add a sound, and **right-click** an existing tile to edit or remove it.
+
+A few things to keep in mind:
+
+- Type-default tiles appear in the Token HUD alongside the actor's own sounds, but they **cannot be edited from the HUD**. Changes must be made through the settings editor.
+- If an actor has its own sound with the same ID as a type default, the **actor's sound takes precedence**.
+- Type defaults are world-level settings, so they apply to every actor of that type across the entire world. Only a GM can change them.
+
+<p align="center">
+  <img width="600" src="docs/default-sound.webp">
+</p>
+
+---
+
 ## Module Settings
 
 | Setting | Description |
 |---|---|
 | **Audio Channel** | Mixer channel used for all module sounds: *Interface*, *Music*, or *Environment* (default). |
+| **Default Sounds by Actor Type** | Configure a base soundboard that is automatically shown on every token of each actor type. |
 
 ---
 
