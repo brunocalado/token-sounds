@@ -79,22 +79,6 @@ Whenever a player triggers a sound, the request is forwarded to the active GM to
 
 ---
 
-## API
-
-You can control sounds from macros or other modules via the global `SoundOfToken` object.
-
-```js
-// Play the sound named "Growl" on the selected token
-SoundOfToken.play(token, "Growl");
-
-// Stop a sound by description
-SoundOfToken.stop(token, "Growl");
-```
-
-The `token` argument accepts a Token placeable, a `TokenDocument`, a Token ID string, or an `Actor`.
-
----
-
 ## Manual Installation
 
 In Foundry VTT, go to **Add-on Modules → Install Module** and paste the manifest URL:

@@ -1,5 +1,4 @@
 import { AUDIO_EXTENSIONS, MODULE_ID } from "./constants.js";
-import { SoundOfToken } from "./api.js";
 import { registerTokenHooks } from "./token-hooks.js";
 
 /**
@@ -25,8 +24,6 @@ Hooks.on("init", () => {
   registerTokenHooks();
 
   game.socket?.on(`module.${MODULE_ID}`, _onSocketMessage);
-
-  globalThis.SoundOfToken = SoundOfToken;
 });
 
 /**
