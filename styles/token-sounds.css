@@ -32,6 +32,22 @@
       opacity: 0.5;
     }
 
+    .add-sound {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      .fa-circle-plus {
+        font-size: 28px;
+        opacity: 0.5;
+        color: var(--color-text-primary);
+      }
+
+      &:hover .fa-circle-plus {
+        opacity: 1;
+      }
+    }
+
     .sound-control .fa-volume {
       z-index: 0;
       top: 10px;
