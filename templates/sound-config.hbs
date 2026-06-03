@@ -32,9 +32,13 @@
   <div class="form-group" data-show-when="non-repeat">
     <label>Source</label>
     <div class="form-fields">
-      <select name="sourceMode">
-        {{selectOptions sourceChoices selected=data.sourceMode}}
-      </select>
+      <div class="sot-segmented-control">
+        <input type="radio" id="sot-src-single-{{data.soundId}}" name="sourceMode" value="single" {{#if (eq data.sourceMode "single")}}checked{{/if}}>
+        <label for="sot-src-single-{{data.soundId}}">Single sound</label>
+        
+        <input type="radio" id="sot-src-folder-{{data.soundId}}" name="sourceMode" value="folder" {{#if (eq data.sourceMode "folder")}}checked{{/if}}>
+        <label for="sot-src-folder-{{data.soundId}}">Random from folder</label>
+      </div>
     </div>
   </div>
 
