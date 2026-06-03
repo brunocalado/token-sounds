@@ -5,7 +5,6 @@ import {
   playOneShot,
   playSounds,
   refreshSoundPosition,
-  stopOneShot,
   stopSounds,
 } from "./token-sounds.js";
 
@@ -38,33 +37,32 @@ export function registerTokenHooks() {
 
   Hooks.on("updateToken", async (token, change, options, userId) => {
     // Sync soundboard tile and HUD button state for every client when playing changes.
-    const playingChange = change.flags?.[MODULE_ID]?.playing;
-    if (playingChange) {
+    // Re-derive every tile from the live playing flag rather than the change delta:
+    // flag deletions don't round-trip as readable per-key entries, so a delta-based
+    // read would leave a toggled-off tile stuck in its playing state.
+    if (change.flags?.[MODULE_ID]?.playing) {
       const hud = canvas.tokens.hud;
       if (hud.object?.document === token) {
         const dataSource = game.actors.get(token.actorId) ?? token;
         const allSounds = dataSource.getFlag(MODULE_ID, "sounds") ?? {};
-        for (const [soundId, play] of Object.entries(playingChange)) {
-          const soundEl = hud.element?.querySelector(`.sound[data-sound-id="${soundId}"]`);
-          if (!soundEl) continue;
-          const isStopped = play === foundry.data.operators.ForcedDeletion || !play;
-          const isRepeat = !!allSounds[soundId]?.repeat;
-          // Only repeat sounds use the `playing` CSS class: it hides the img and shows the fa-beat icon.
-          // Non-repeat (one-shot) tiles keep their image visible at all times.
-          soundEl.classList.toggle("playing", !isStopped && isRepeat);
-          if (isStopped) {
-            soundEl.querySelector("i.fa-volume")?.remove();
-          } else if (!soundEl.querySelector("i.fa-volume") && isRepeat) {
-            const icon = document.createElement("i");
-            icon.classList.add("fa-solid", "fa-volume", "fa-beat");
-            soundEl.appendChild(icon);
+        const playing = token.getFlag(MODULE_ID, "playing") ?? {};
+        for (const soundEl of hud.element?.querySelectorAll(".sound") ?? []) {
+          const soundId = soundEl.dataset.soundId;
+          // Only repeat sounds use the `playing` CSS class: it hides the img and shows the
+          // fa-beat icon. Non-repeat (one-shot) tiles keep their image visible at all times.
+          const active = !!playing[soundId] && !!allSounds[soundId]?.repeat;
+          soundEl.classList.toggle("playing", active);
+          const icon = soundEl.querySelector("i.fa-volume");
+          if (active && !icon) {
+            const i = document.createElement("i");
+            i.classList.add("fa-solid", "fa-volume", "fa-beat");
+            soundEl.appendChild(i);
+          } else if (!active) {
+            icon?.remove();
           }
         }
         const button = hud.element?.querySelector(".control-icon.token-sounds");
-        if (button) {
-          const stillPlaying = !foundry.utils.isEmpty(token.getFlag(MODULE_ID, "playing") ?? {});
-          button.classList.toggle("playing", stillPlaying);
-        }
+        if (button) button.classList.toggle("playing", !foundry.utils.isEmpty(playing));
       }
     }
 
@@ -75,32 +73,18 @@ export function registerTokenHooks() {
       const dataSource = game.actors.get(token.actorId) ?? token;
       const allSounds = dataSource.getFlag(MODULE_ID, "sounds") ?? {};
 
-      if (flags.sounds) {
-        for (const [soundId, val] of Object.entries(flags.sounds)) {
-          if (val === foundry.data.operators.ForcedDeletion) {
-            stopSounds(token, [soundId]);
-          } else {
-            stopSounds(token, [soundId]);
-            // Only repeat sounds get auto-(re)started on config edit.
-            // Non-repeat entries are user-triggered one-shots and must not fire on save.
-            if (allSounds[soundId]?.repeat) playSounds(token, [soundId]);
-          }
-        }
-      }
+      // Sounds map changed on the token itself (unlinked): drop playing flags for
+      // entries that no longer exist so their attached AmbientSounds get torn down.
+      if (flags.sounds) await _clearOrphanedPlaying(token, allSounds);
 
-      if (flags.playing) {
-        for (const [soundId, play] of Object.entries(flags.playing)) {
-          const sound = allSounds[soundId];
-          if (!sound) continue;
-          const stopping = play === foundry.data.operators.ForcedDeletion || !play;
-          if (sound.repeat) {
-            if (stopping) stopSounds(token, [soundId]);
-            else playSounds(token, [soundId]);
-          } else {
-            if (stopping) stopOneShot(token, soundId);
-            else playOneShot(token, sound);
-          }
-        }
+      // Reconcile repeat-mode AmbientSounds against the live playing flag: stopSounds
+      // tears down every attached sound no longer marked playing, playSounds (re)creates
+      // those now marked playing. This is delta-agnostic, so toggling a sound off works
+      // even though the cleared flag key is absent from the change. One-shots no longer
+      // touch this flag — they are dispatched directly on click.
+      if (flags.sounds || flags.playing) {
+        stopSounds(token);
+        await playSounds(token);
       }
     }
     if ("x" in change || "y" in change || "width" in change || "height" in change) {
@@ -112,7 +96,11 @@ export function registerTokenHooks() {
     if (game.user.id !== userId) return;
     if (!change.flags?.[MODULE_ID]) return;
     const soundsChanged = change.flags[MODULE_ID].sounds !== undefined;
+    const sounds = actor.getFlag(MODULE_ID, "sounds") ?? {};
     for (const t of actor.getActiveTokens(false, true)) {
+      // A removed sound leaves its playing/attached flags behind on the token; clear the
+      // orphaned playing flag first so the reconcile below tears down its AmbientSound.
+      if (soundsChanged) await _clearOrphanedPlaying(t, sounds);
       stopSounds(t);
       await playSounds(t);
       if (soundsChanged) await _refreshHudSoundboard(t);
@@ -186,6 +174,21 @@ async function _cleanupStuckOneShots(token) {
     }
   }
   if (dirty) await token.update(update);
+}
+
+/**
+ * Clear the `playing` flag for every sound id no longer present in `sounds` (e.g. a
+ * sound the user just removed). Clearing it lets the standard reconcile tear down the
+ * sound's orphaned AmbientSound, which would otherwise keep playing forever.
+ * @param {TokenDocument} token
+ * @param {object} sounds Current sound definitions keyed by soundId.
+ * @returns {Promise<void>}
+ */
+async function _clearOrphanedPlaying(token, sounds) {
+  const playing = token.getFlag(MODULE_ID, "playing") ?? {};
+  for (const soundId of Object.keys(playing)) {
+    if (!sounds[soundId]) await token.unsetFlag(MODULE_ID, `playing.${soundId}`);
+  }
 }
 
 /**
@@ -389,13 +392,12 @@ function _onSoundClick(event, token) {
     return;
   }
 
-  // Repeat sounds are on/off: toggle the persistent `playing` flag.
+  // Repeat sounds are on/off: toggle the persistent `playing` flag. Use unsetFlag to
+  // clear it (rather than a ForcedDeletion value) so the flag is actually removed and
+  // the updateToken reconcile tears down the attached AmbientSound.
   const playing = (token.getFlag(MODULE_ID, "playing") ?? {})[soundId];
-  const update = {};
-  if (playing) update[`flags.${MODULE_ID}.playing.${soundId}`] = foundry.data.operators.ForcedDeletion;
-  else update[`flags.${MODULE_ID}.playing.${soundId}`] = true;
-
-  token.update(update);
+  if (playing) token.unsetFlag(MODULE_ID, `playing.${soundId}`);
+  else token.update({ [`flags.${MODULE_ID}.playing.${soundId}`]: true });
 }
 
 /**

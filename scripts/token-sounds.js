@@ -152,8 +152,10 @@ export async function playSounds(token, soundIds) {
  */
 export function stopSounds(token, soundIds) {
   const playing = token.getFlag(MODULE_ID, "playing") ?? {};
-  if (!soundIds) soundIds = Object.keys(playing);
   const attached = token.getFlag(MODULE_ID, "attached") ?? {};
+  // Default to every attached sound: those are the candidates to tear down. Iterating
+  // the playing flag instead would miss sounds just toggled off, since their key is gone.
+  if (!soundIds) soundIds = Object.keys(attached);
 
   for (const soundId of soundIds) {
     if (attached[soundId] && !playing[soundId]) {
