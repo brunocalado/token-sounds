@@ -85,7 +85,7 @@ function _onSocketMessage(message) {
       if (!token) return;
       const dataSource = game.actors.get(token.actorId) ?? token;
       const sound = getMergedSounds(dataSource)[args.soundId];
-      if (sound) playOneShot(token, sound);
+      if (sound) playOneShot(token, sound, args.targetLinked ?? false);
       break;
     }
     case "ONESHOT_STOP_REQUEST": {
@@ -307,20 +307,36 @@ export function refreshSoundPosition(token) {
 
 /**
  * Resolve the audio URL (folder mode → random pick from the root of the folder),
- * compute listener tokens within radius at click time, and broadcast a play message
- * to every client. Non-GM forwards the request to the responsible GM.
+ * compute the audience, and broadcast a play message to every client.
+ * Non-GM forwards the request to the responsible GM.
+ *
+ * When `targetLinked` is true, the audience is resolved from the user who has the
+ * token's actor assigned as their character (`user.character`). If no such user
+ * exists, the function returns early and no sound plays. The GM always hears the
+ * sound regardless of the audience mode.
+ *
  * @param {TokenDocument} token
  * @param {object} sound
+ * @param {boolean} [targetLinked=false] When true, send only to the actor's linked user.
  * @returns {Promise<void>}
  */
-export async function playOneShot(token, sound) {
+export async function playOneShot(token, sound, targetLinked = false) {
   if (!game.user.isGM) {
     game.socket?.emit(`module.${MODULE_ID}`, {
       handlerName: "sound",
       type: "ONESHOT_REQUEST",
-      args: { sceneId: token.parent.id, tokenId: token.id, soundId: sound.soundId },
+      args: { sceneId: token.parent.id, tokenId: token.id, soundId: sound.soundId, targetLinked },
     });
     return;
+  }
+
+  // Resolve the linked user before touching audio so we bail early cheaply.
+  let userIds = null;
+  if (targetLinked) {
+    const actor = game.actors.get(token.actorId);
+    const linkedUser = actor ? game.users.find((u) => u.character?.id === actor.id) : null;
+    if (!linkedUser) return;
+    userIds = [linkedUser.id];
   }
 
   let url = sound.path;
@@ -338,7 +354,7 @@ export async function playOneShot(token, sound) {
   }
 
   const channel = game.settings.get(MODULE_ID, "channel");
-  const tokenIds = _computeListenersInRange(token, sound.radius ?? 30);
+  const tokenIds = userIds ? [] : _computeListenersInRange(token, sound.radius ?? 30);
 
   const payload = {
     sceneId: token.parent.id,
@@ -348,6 +364,7 @@ export async function playOneShot(token, sound) {
     volume: sound.volume ?? 0.5,
     channel,
     tokenIds,
+    userIds,
   };
 
   game.socket?.emit(`module.${MODULE_ID}`, {
@@ -386,17 +403,19 @@ export function stopOneShot(token, soundId) {
 }
 
 /**
- * Decide whether this client plays the broadcast one-shot. Plays for the GM
- * unconditionally; for players, only if they own at least one listener token.
+ * Decide whether this client plays the broadcast one-shot.
+ * The GM always plays. For players: if `userIds` is set (targeted-linked mode),
+ * the client plays only if its user id is in that list; otherwise, the client
+ * plays if it owns at least one listener token within radius.
  * @param {object} payload
  */
 async function _onOneShotPlay(payload) {
-  const { sceneId, tokenId, soundId, url, volume, channel, tokenIds } = payload;
+  const { sceneId, tokenId, soundId, url, volume, channel, tokenIds, userIds } = payload;
   const scene = game.scenes.get(sceneId);
   if (!scene) return;
 
   const shouldPlay = game.user.isGM
-    || tokenIds.some((id) => scene.tokens.get(id)?.isOwner);
+    || (userIds ? userIds.includes(game.user.id) : tokenIds.some((id) => scene.tokens.get(id)?.isOwner));
   if (!shouldPlay) return;
 
   const key = `${tokenId}:${soundId}`;

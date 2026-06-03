@@ -76,6 +76,16 @@ Open the Token HUD and click the Token Audio FX button to reveal the soundboard.
 - **Click the same tile again** to stop it (repeat sounds only — single sounds stop on their own).
 - A tile with a pulsing icon indicates an active repeat sound.
 
+### Directed Playback (Ctrl+Click)
+
+**Ctrl+clicking** a single (one-shot) sound tile sends the audio only to the player who has that token's actor assigned as their character — instead of broadcasting to every player with tokens in range.
+
+- The GM always hears the sound regardless.
+- If no player has that actor set as their character, **no sound plays**.
+- Repeat sounds do not support directed playback; Ctrl+click has no effect on them.
+
+This works from both the GM and from players who have been granted soundboard edit access on the token. The request is always processed by the GM before being delivered to the linked player.
+
 ---
 
 ## Player Permissions

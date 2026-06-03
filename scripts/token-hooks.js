@@ -398,6 +398,8 @@ async function _refreshHudSoundboard(token) {
 
 /**
  * Toggle a single sound's playing flag when its tile is clicked.
+ * Ctrl+click on a one-shot sends it exclusively to the user who has the token's
+ * actor assigned as their character (plus the GM). If no user is linked, no sound plays.
  * @param {Event} event
  * @param {TokenDocument} token
  */
@@ -417,7 +419,7 @@ function _onSoundClick(event, token) {
   // toggle would stop the sound on the second click and refuse to replay while
   // the previous play's flag is still set (it lingers until the sound ends).
   if (!sound.repeat) {
-    playOneShot(token, sound);
+    playOneShot(token, sound, event.ctrlKey);
     return;
   }
 
