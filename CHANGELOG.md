@@ -1,6 +1,18 @@
 # 0.0.2
 
 ## [Fixed]
+- Ícone pulsante verde (`fa-beat`) não aparece mais em sons non-repeat; o efeito visual de loop agora é exclusivo de sons com `repeat: true`.
+- Imagem do tile de som non-repeat não some mais durante a reprodução: a classe CSS `playing` (que esconde o `<img>`) agora só é aplicada em sons repeat.
+- Botão Remove agora deleta o som com `setFlag` (read-modify-write explícito) em vez de `ForcedDeletion` em caminho aninhado, garantindo que a deleção funcione em qualquer build do Foundry V14.
+- Após o Remove, o painel do soundboard é atualizado imediatamente via `_refreshHudSoundboard` acionado pelo hook `updateActor`.
+- Contextmenu no tile não fecha mais o HUD inadvertidamente (adicionado `stopPropagation`).
+- `updateActor` agora usa `for...of` com `await` em vez de `forEach` com callback async, garantindo que `playSounds` complete antes de `_refreshHudSoundboard` reconstruir o painel.
+- Selector de Source (radio buttons) agora detecta corretamente o radio marcado; snap de "Folder" → "Single" ao ativar Repeat funciona para radio buttons.
+
+## [Added]
+- Efeito de hover verde (`rgba(173, 255, 47, 0.2)`) nos tiles do soundboard via pseudo-elemento `::after`.
+
+## [Fixed]
 - `SoundConfigSheet` (botão "+" do soundboard) voltou a abrir como janela flutuante. A definição incorreta de `BASE_APPLICATION` apontando para a própria classe fazia o Foundry ignorar as `DEFAULT_OPTIONS` da `ApplicationV2` (`window.frame`/`window.positioned`): o formulário era inserido no fluxo do documento — não abria de fato e empurrava o sidebar direito para a esquerda.
 - Sons non-repeat agora são removidos corretamente quando expiram, mesmo após reload do GM.
 - Duration do áudio agora é lida do buffer decoded no momento do play, garantindo que o timer sempre seja agendado.

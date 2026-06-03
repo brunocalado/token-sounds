@@ -42,14 +42,19 @@ export function registerTokenHooks() {
     if (playingChange) {
       const hud = canvas.tokens.hud;
       if (hud.object?.document === token) {
+        const dataSource = game.actors.get(token.actorId) ?? token;
+        const allSounds = dataSource.getFlag(MODULE_ID, "sounds") ?? {};
         for (const [soundId, play] of Object.entries(playingChange)) {
           const soundEl = hud.element?.querySelector(`.sound[data-sound-id="${soundId}"]`);
           if (!soundEl) continue;
           const isStopped = play === foundry.data.operators.ForcedDeletion || !play;
-          soundEl.classList.toggle("playing", !isStopped);
+          const isRepeat = !!allSounds[soundId]?.repeat;
+          // Only repeat sounds use the `playing` CSS class: it hides the img and shows the fa-beat icon.
+          // Non-repeat (one-shot) tiles keep their image visible at all times.
+          soundEl.classList.toggle("playing", !isStopped && isRepeat);
           if (isStopped) {
             soundEl.querySelector("i.fa-volume")?.remove();
-          } else if (!soundEl.querySelector("i.fa-volume")) {
+          } else if (!soundEl.querySelector("i.fa-volume") && isRepeat) {
             const icon = document.createElement("i");
             icon.classList.add("fa-solid", "fa-volume", "fa-beat");
             soundEl.appendChild(icon);
@@ -106,10 +111,12 @@ export function registerTokenHooks() {
   Hooks.on("updateActor", async (actor, change, options, userId) => {
     if (game.user.id !== userId) return;
     if (!change.flags?.[MODULE_ID]) return;
-    actor.getActiveTokens(false, true).forEach((t) => {
+    const soundsChanged = change.flags[MODULE_ID].sounds !== undefined;
+    for (const t of actor.getActiveTokens(false, true)) {
       stopSounds(t);
-      playSounds(t);
-    });
+      await playSounds(t);
+      if (soundsChanged) await _refreshHudSoundboard(t);
+    }
   });
 
   Hooks.on("renderTokenHUD", (hud, html, token) => {
@@ -218,7 +225,11 @@ async function _onButtonClick(event, hud) {
  */
 function _bindMenuListeners(wrapper, token, actor) {
   wrapper.querySelectorAll(".sound.editable").forEach((el) => {
-    el.addEventListener("contextmenu", (e) => _onSoundRightClick(e, actor));
+    el.addEventListener("contextmenu", (e) => {
+      // Prevent canvas contextmenu handler from dismissing the HUD while the config sheet opens.
+      e.stopPropagation();
+      _onSoundRightClick(e, actor);
+    });
   });
 
   const addBtn = wrapper.querySelector(".add-sound");
@@ -301,6 +312,7 @@ async function renderMenu(token) {
 
   sounds.forEach((s) => {
     s.playing = s.soundId in playing;
+    s.playingRepeat = s.playing && !!s.repeat;
     if (!s.img) s.img = "icons/svg/sound.svg";
   });
 
@@ -315,6 +327,38 @@ async function renderMenu(token) {
   const template = document.createElement("template");
   template.innerHTML = html.trim();
   return template.content.firstElementChild;
+}
+
+/**
+ * Re-render the open soundboard panel for `token` in-place, preserving the active
+ * state. Called after the actor's `sounds` flag changes (add, edit, delete) so the
+ * HUD tiles immediately reflect the new state without requiring a manual close/reopen.
+ * @param {TokenDocument} token
+ * @returns {Promise<void>}
+ */
+async function _refreshHudSoundboard(token) {
+  const hud = canvas.tokens.hud;
+  if (hud.object?.document !== token) return;
+  if (!hud._soundBoard?.active) return;
+
+  const button = hud.element?.querySelector(".control-icon.token-sounds");
+  if (!button) return;
+
+  const actor = game.actors.get(token.actorId);
+  if (!actor) return;
+
+  button.querySelector(".token-sounds-wrapper")?.remove();
+
+  const wrapper = await renderMenu(token);
+  if (!wrapper) {
+    hud._soundBoard.active = false;
+    return;
+  }
+
+  const icon = button.querySelector("i");
+  icon.after(wrapper);
+  wrapper.classList.add("active");
+  _bindMenuListeners(wrapper, token, actor);
 }
 
 /**

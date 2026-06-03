@@ -48,6 +48,15 @@
       &.playing img {
         opacity: 0;
       }
+
+      &:hover::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: rgba(173, 255, 47, 0.2);
+        border-radius: 2px;
+        pointer-events: none;
+      }
     }
 
     .sound.drag-left {

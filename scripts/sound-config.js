@@ -79,7 +79,9 @@ class SoundConfigSheet extends foundry.applications.api.HandlebarsApplicationMix
     const root = this.element;
 
     root.querySelector('[name="repeat"]')?.addEventListener("change", () => this.#applyVisibility());
-    root.querySelector('[name="sourceMode"]')?.addEventListener("change", () => this.#applyVisibility());
+    root.querySelectorAll('[name="sourceMode"]').forEach((el) => {
+      el.addEventListener("change", () => this.#applyVisibility());
+    });
 
     const volEl = root.querySelector('[name="volume"]');
     const volDisp = root.querySelector(".volume-display");
@@ -100,12 +102,13 @@ class SoundConfigSheet extends foundry.applications.api.HandlebarsApplicationMix
   #applyVisibility() {
     const root = this.element;
     const repeat = !!root.querySelector('[name="repeat"]')?.checked;
-    const sourceModeEl = root.querySelector('[name="sourceMode"]');
+    const sourceModeEl = root.querySelector('[name="sourceMode"]:checked');
     let sourceMode = sourceModeEl?.value ?? "single";
 
-    // Folder mode is non-repeat only: snap the select back if the user just enabled repeat.
-    if (repeat && sourceMode === "folder" && sourceModeEl) {
-      sourceModeEl.value = "single";
+    // Folder mode is non-repeat only: snap the radio back to "single" if the user just enabled repeat.
+    if (repeat && sourceMode === "folder") {
+      const singleRadio = root.querySelector('[name="sourceMode"][value="single"]');
+      if (singleRadio) singleRadio.checked = true;
       sourceMode = "single";
     }
 
@@ -149,11 +152,13 @@ class SoundConfigSheet extends foundry.applications.api.HandlebarsApplicationMix
 
   /**
    * Remove the current sound entry from the data source. `this` is the sheet.
+   * Uses an explicit read-modify-write instead of ForcedDeletion to guarantee
+   * the nested flag key is deleted in every Foundry V14 build.
    */
   static async #onRemove() {
-    await this.dataSource.update({
-      [`flags.${MODULE_ID}.sounds.${this.soundId}`]: foundry.data.operators.ForcedDeletion,
-    });
+    const sounds = foundry.utils.deepClone(this.dataSource.getFlag(MODULE_ID, "sounds") ?? {});
+    delete sounds[this.soundId];
+    await this.dataSource.setFlag(MODULE_ID, "sounds", sounds);
     this.close();
   }
 
