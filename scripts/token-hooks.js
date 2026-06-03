@@ -376,11 +376,24 @@ function _onSoundClick(event, token) {
   const soundId = event.target.closest(".sound")?.dataset.soundId;
   if (!soundId) return;
 
+  const dataSource = game.actors.get(token.actorId) ?? token;
+  const sound = (dataSource.getFlag(MODULE_ID, "sounds") ?? {})[soundId];
+  if (!sound) return;
+
+  // Non-repeat sounds are one-shots: every click must fire a fresh playback.
+  // Dispatch directly instead of toggling the persistent `playing` flag — a
+  // toggle would stop the sound on the second click and refuse to replay while
+  // the previous play's flag is still set (it lingers until the sound ends).
+  if (!sound.repeat) {
+    playOneShot(token, sound);
+    return;
+  }
+
+  // Repeat sounds are on/off: toggle the persistent `playing` flag.
   const playing = (token.getFlag(MODULE_ID, "playing") ?? {})[soundId];
   const update = {};
-
-  if (playing) update[`flags.${MODULE_ID}.playing.` + soundId] = foundry.data.operators.ForcedDeletion;
-  else update[`flags.${MODULE_ID}.playing.` + soundId] = true;
+  if (playing) update[`flags.${MODULE_ID}.playing.${soundId}`] = foundry.data.operators.ForcedDeletion;
+  else update[`flags.${MODULE_ID}.playing.${soundId}`] = true;
 
   token.update(update);
 }

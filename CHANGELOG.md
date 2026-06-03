@@ -5,6 +5,7 @@
 - Imagem do tile de som non-repeat não some mais durante a reprodução: a classe CSS `playing` (que esconde o `<img>`) agora só é aplicada em sons repeat.
 - Botão Remove agora deleta o som de fato. O `setFlag` (read-modify-write) anterior não removia a entrada porque o update do Foundry é recursivo por padrão e mesclava o mapa de volta com a chave que tentávamos apagar. Agora usa `unsetFlag(MODULE_ID, "sounds.<id>")`, a API canônica de deleção (sem aviso de `-=key` legado).
 - Clique com o botão direito em um tile do HUD não abre mais o menu de contexto nativo do browser. O `stopPropagation` impedia o handler do canvas (que normalmente chama `preventDefault`) de rodar, então agora chamamos `preventDefault` explicitamente no listener do tile.
+- Sons non-repeat (toque único) agora tocam a cada clique. O clique era um toggle do flag `playing` persistente, então o segundo clique (enquanto o flag ainda estava setado durante a reprodução) parava o som em vez de tocá-lo de novo. Agora sons non-repeat disparam `playOneShot` diretamente a cada clique, sem usar o flag de toggle; sons repeat continuam como liga/desliga.
 - Após o Remove, o painel do soundboard é atualizado imediatamente via `_refreshHudSoundboard` acionado pelo hook `updateActor`.
 - Contextmenu no tile não fecha mais o HUD inadvertidamente (adicionado `stopPropagation`).
 - `updateActor` agora usa `for...of` com `await` em vez de `forEach` com callback async, garantindo que `playSounds` complete antes de `_refreshHudSoundboard` reconstruir o painel.
