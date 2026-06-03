@@ -14,6 +14,7 @@
   }
 
   & .form-group {
+    display: flex;
     margin-bottom: 0.75rem;
 
     &.hidden {
@@ -21,21 +22,33 @@
     }
   }
 
-  & label {
+  & .form-group > label {
+    flex: 0 0 140px;
     font-weight: 600;
     color: #cccccc;
     text-shadow: none;
   }
 
+  /* Exceção: Mantém apenas o label longo com mais espaço para não quebrar linha */
+  & .form-group[data-show-when="repeat"] > label {
+    flex: 0 0 230px;
+  }
+
   & .form-fields {
+    flex: 1;
+    display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-width: 0;
   }
 
   /* Campos de texto e selects */
   & input[type="text"],
   & input[type="number"],
   & select {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
     background: rgba(0, 0, 0, 0.6);
     border: 1px solid #555;
     color: #ffffff;
@@ -126,11 +139,13 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
   }
 
   /* Estilização explícita do Slider (Trilha e Marcador) */
   & .volume-slider {
-    flex: 1;
+    flex: 0 0 150px;
     -webkit-appearance: none;
     appearance: none;
     background: transparent;
@@ -187,6 +202,7 @@
     text-align: right;
     font-weight: bold;
     color: #ff6400;
+    white-space: nowrap;
   }
 
   /* Botões do Rodapé */
