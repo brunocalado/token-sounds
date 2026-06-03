@@ -22,7 +22,10 @@
   <div class="form-group">
     <label>Repeat</label>
     <div class="form-fields">
-      <input type="checkbox" name="repeat" data-dtype="Boolean" {{#if data.repeat}}checked{{/if}}>
+      <label class="sot-toggle">
+        <input type="checkbox" name="repeat" data-dtype="Boolean" {{#if data.repeat}}checked{{/if}}>
+        <span class="sot-slider"></span>
+      </label>
     </div>
   </div>
 
@@ -63,7 +66,10 @@
   <div class="form-group" data-show-when="repeat">
     <label>Constrained by Walls and Surfaces</label>
     <div class="form-fields">
-      <input type="checkbox" name="walls" data-dtype="Boolean" {{#if data.walls}}checked{{/if}}>
+      <label class="sot-toggle">
+        <input type="checkbox" name="walls" data-dtype="Boolean" {{#if data.walls}}checked{{/if}}>
+        <span class="sot-slider"></span>
+      </label>
     </div>
   </div>
 </fieldset>
