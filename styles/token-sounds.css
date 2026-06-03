@@ -59,6 +59,17 @@
       z-index: 1;
     }
 
+    .type-default-badge {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      font-size: 9px;
+      color: var(--color-text-hyperlink);
+      opacity: 0.9;
+      pointer-events: none;
+      z-index: 1;
+    }
+
     .sound-control .fa-volume {
       z-index: 0;
       top: 10px;

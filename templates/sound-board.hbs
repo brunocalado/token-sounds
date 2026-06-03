@@ -1,9 +1,10 @@
 <div class="token-sounds token-sounds-wrapper" data-tooltip="">
   {{#each sounds}}
-  <div class="sound-control sound {{#if ../editable}}editable{{/if}} {{#if playingRepeat}}playing{{/if}}" data-sound-id="{{this.soundId}}" title="{{this.name}}">
-    <img {{#if ../editable}}draggable="true"{{/if}} src="{{this.img}}">
+  <div class="sound-control sound {{#if editableInHud}}editable{{/if}} {{#if playingRepeat}}playing{{/if}}" data-sound-id="{{this.soundId}}" title="{{this.name}}">
+    <img {{#if editableInHud}}draggable="true"{{/if}} src="{{this.img}}">
     {{#if playingRepeat}}<i class="fa-solid fa-volume fa-beat"></i>{{/if}}
     {{#if repeat}}<i class="fa-solid fa-rotate sound-type-badge"></i>{{/if}}
+    {{#if isTypeDefault}}<i class="fa-solid fa-globe type-default-badge"></i>{{/if}}
   </div>
   {{/each}}
   {{#if editable}}

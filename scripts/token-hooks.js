@@ -1,4 +1,5 @@
 import { MODULE_ID } from "./constants.js";
+import { getMergedSounds } from "./helpers.js";
 import { openSoundConfig } from "./sound-config.js";
 import {
   deleteSound,
@@ -45,7 +46,7 @@ export function registerTokenHooks() {
       const hud = canvas.tokens.hud;
       if (hud.object?.document === token) {
         const dataSource = game.actors.get(token.actorId) ?? token;
-        const allSounds = dataSource.getFlag(MODULE_ID, "sounds") ?? {};
+        const allSounds = getMergedSounds(dataSource);
         const playing = token.getFlag(MODULE_ID, "playing") ?? {};
         for (const soundEl of hud.element?.querySelectorAll(".sound") ?? []) {
           const soundId = soundEl.dataset.soundId;
@@ -72,7 +73,7 @@ export function registerTokenHooks() {
     const flags = change.flags?.[MODULE_ID];
     if (flags) {
       const dataSource = game.actors.get(token.actorId) ?? token;
-      const allSounds = dataSource.getFlag(MODULE_ID, "sounds") ?? {};
+      const allSounds = getMergedSounds(dataSource);
 
       // Sounds map changed on the token itself (unlinked): drop playing flags for
       // entries that no longer exist so their attached AmbientSounds get torn down.
@@ -97,7 +98,7 @@ export function registerTokenHooks() {
     if (game.user.id !== userId) return;
     if (!change.flags?.[MODULE_ID]) return;
     const soundsChanged = change.flags[MODULE_ID].sounds !== undefined;
-    const sounds = actor.getFlag(MODULE_ID, "sounds") ?? {};
+    const sounds = getMergedSounds(actor);
     for (const t of actor.getActiveTokens(false, true)) {
       // A removed sound leaves its playing/attached flags behind on the token; clear the
       // orphaned playing flag first so the reconcile below tears down its AmbientSound.
@@ -120,7 +121,7 @@ export function registerTokenHooks() {
     if (!token) return;
 
     const dataSource = game.actors.get(token.actorId) ?? token;
-    const sounds = dataSource.getFlag(MODULE_ID, "sounds") ?? {};
+    const sounds = getMergedSounds(dataSource);
     const turnStartSounds = Object.values(sounds).filter((s) => !s.repeat && s.turnStart);
     for (const sound of turnStartSounds) {
       await playOneShot(token, sound);
@@ -133,7 +134,7 @@ export function registerTokenHooks() {
 
     const actor = game.actors.get(token.actorId);
     if (!actor) return;
-    const sounds = actor.getFlag(MODULE_ID, "sounds");
+    const sounds = getMergedSounds(actor);
     const allowPlayerEdit = actor.getFlag(MODULE_ID, "allowPlayerEdit");
     if (!(game.user.isGM || allowPlayerEdit) && foundry.utils.isEmpty(sounds)) return;
 
@@ -182,7 +183,7 @@ export function registerTokenHooks() {
  */
 async function _cleanupStuckOneShots(token) {
   const dataSource = game.actors.get(token.actorId) ?? token;
-  const sounds = dataSource.getFlag(MODULE_ID, "sounds") ?? {};
+  const sounds = getMergedSounds(dataSource);
   const playing = token.getFlag(MODULE_ID, "playing") ?? {};
   for (const soundId of Object.keys(playing)) {
     const s = sounds[soundId];
@@ -332,7 +333,15 @@ async function renderMenu(token) {
 
   const actor = game.actors.get(token.actorId);
   if (!actor) return;
-  const sounds = Object.values(foundry.utils.deepClone(actor.getFlag(MODULE_ID, "sounds") ?? {})).sort(
+
+  const actorSounds = actor.getFlag(MODULE_ID, "sounds") ?? {};
+  const typeDefaults = (game.settings.get(MODULE_ID, "actorTypeDefaults") ?? {})[actor.type] ?? {};
+  const merged = { ...typeDefaults, ...actorSounds };
+
+  const allowPlayerEdit = actor.getFlag(MODULE_ID, "allowPlayerEdit");
+  const editable = game.user.isGM || allowPlayerEdit;
+
+  const sounds = Object.values(foundry.utils.deepClone(merged)).sort(
     (s1, s2) => (s1.sort ?? 0) - (s2.sort ?? 0),
   );
 
@@ -340,10 +349,10 @@ async function renderMenu(token) {
     s.playing = s.soundId in playing;
     s.playingRepeat = s.playing && !!s.repeat;
     if (!s.img) s.img = "icons/svg/sound.svg";
+    // Type defaults can't be edited from the HUD — only from the settings app.
+    s.isTypeDefault = !!(typeDefaults[s.soundId] && !actorSounds[s.soundId]);
+    s.editableInHud = editable && !s.isTypeDefault;
   });
-
-  const allowPlayerEdit = actor.getFlag(MODULE_ID, "allowPlayerEdit");
-  const editable = game.user.isGM || allowPlayerEdit;
 
   const html = await foundry.applications.handlebars.renderTemplate(
     `modules/${MODULE_ID}/templates/sound-board.hbs`,
@@ -400,7 +409,7 @@ function _onSoundClick(event, token) {
   if (!soundId) return;
 
   const dataSource = game.actors.get(token.actorId) ?? token;
-  const sound = (dataSource.getFlag(MODULE_ID, "sounds") ?? {})[soundId];
+  const sound = getMergedSounds(dataSource)[soundId];
   if (!sound) return;
 
   // Non-repeat sounds are one-shots: every click must fire a fresh playback.

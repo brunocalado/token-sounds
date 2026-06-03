@@ -3,7 +3,7 @@
   "title": "Token Audio FX",
   "description": "Play ambient sounds through tokens.",
 
-  "version": "0.0.3",
+  "version": "0.0.4",
 
   "compatibility": {
     "minimum": 14,
@@ -20,7 +20,7 @@
   
   "esmodules": ["scripts/token-sounds.js"],
   "scripts": [],
-  "styles": ["styles/token-sounds.css", "styles/sound-config.css"],
+  "styles": ["styles/token-sounds.css", "styles/sound-config.css", "styles/actor-type-defaults.css"],
   
   "socket": true,
   

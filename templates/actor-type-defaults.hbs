@@ -1,0 +1,23 @@
+<div class="actor-type-defaults-body">
+  {{#each types}}
+  <section class="type-section" data-actor-type="{{type}}">
+    <header class="type-header">
+      <h3>{{label}}</h3>
+      <button type="button" class="add-type-sound" data-action="addSound" data-actor-type="{{type}}" title="Add Default Sound">
+        <i class="fa-solid fa-circle-plus"></i>
+      </button>
+    </header>
+    <div class="type-sounds">
+      {{#each sounds}}
+      <div class="default-sound-tile" data-sound-id="{{soundId}}" title="{{name}}&#10;Right-click to edit">
+        <img src="{{img}}" alt="{{name}}">
+        {{#if repeat}}<i class="fa-solid fa-rotate sound-type-badge"></i>{{/if}}
+      </div>
+      {{/each}}
+      {{#unless sounds}}
+      <p class="no-sounds-hint">No defaults. Click + to add.</p>
+      {{/unless}}
+    </div>
+  </section>
+  {{/each}}
+</div>

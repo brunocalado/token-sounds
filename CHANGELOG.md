@@ -1,3 +1,8 @@
+# 0.0.4
+
+## [Added]
+- **Default sounds by actor type:** New settings menu button ("Configure") opens an app that lets the GM define a default soundboard for each actor type registered in the world (e.g. "character", "npc"). Every token whose actor matches a type automatically shows those defaults alongside its actor-specific sounds. Type-default tiles display a globe badge and are read-only from the token HUD — edit them only from the settings app. Turn-start one-shots and repeat ambient sounds defined as type defaults work exactly like actor-specific sounds.
+
 # 0.0.2
 
 ## [Fixed]

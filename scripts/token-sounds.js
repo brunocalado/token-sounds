@@ -1,4 +1,6 @@
 import { AUDIO_EXTENSIONS, MODULE_ID } from "./constants.js";
+import { ActorTypeDefaultsApp } from "./actor-type-defaults-app.js";
+import { getMergedSounds } from "./helpers.js";
 import { registerTokenHooks } from "./token-hooks.js";
 
 /**
@@ -18,6 +20,22 @@ Hooks.on("init", () => {
     type: String,
     default: "environment",
     choices: { interface: "Interface", music: "Music", environment: "Environment" },
+  });
+
+  game.settings.register(MODULE_ID, "actorTypeDefaults", {
+    scope: "world",
+    config: false,
+    type: Object,
+    default: {},
+  });
+
+  game.settings.registerMenu(MODULE_ID, "actorTypeDefaults", {
+    name: "Default Sounds by Actor Type",
+    hint: "Configure default soundboards applied to every actor of each type.",
+    label: "Configure",
+    icon: "fas fa-waveform-path",
+    type: ActorTypeDefaultsApp,
+    restricted: true,
   });
 
   patchAmbientSound();
@@ -66,7 +84,7 @@ function _onSocketMessage(message) {
       const token = game.scenes.get(args.sceneId)?.tokens.get(args.tokenId);
       if (!token) return;
       const dataSource = game.actors.get(token.actorId) ?? token;
-      const sound = (dataSource.getFlag(MODULE_ID, "sounds") ?? {})[args.soundId];
+      const sound = getMergedSounds(dataSource)[args.soundId];
       if (sound) playOneShot(token, sound);
       break;
     }
@@ -124,7 +142,7 @@ function patchAmbientSound() {
  */
 export async function playSounds(token, soundIds) {
   const dataSource = game.actors.get(token.actorId) ?? token;
-  const sounds = dataSource.getFlag(MODULE_ID, "sounds") ?? {};
+  const sounds = getMergedSounds(dataSource);
   const playing = token.getFlag(MODULE_ID, "playing") ?? {};
 
   if (!soundIds) soundIds = Object.keys(playing);
