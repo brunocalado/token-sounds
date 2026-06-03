@@ -12,7 +12,7 @@ export class SoundEntry extends foundry.abstract.DataModel {
     return {
       soundId:     new f.StringField({ required: true, blank: false }),
       img:         new f.StringField({ required: false, blank: true, initial: "icons/svg/sound.svg" }),
-      description: new f.StringField({ required: false, blank: true, initial: "" }),
+      name:        new f.StringField({ required: false, blank: true, initial: "", max: 200 }),
       path:        new f.StringField({ required: true, blank: true, initial: "" }),
       sourceMode:  new f.StringField({ required: true, blank: false, choices: ["single", "folder"], initial: "single" }),
       radius:      new f.NumberField({ required: true, min: 0, initial: 30 }),
