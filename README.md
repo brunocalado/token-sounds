@@ -39,6 +39,12 @@ Use single sounds for:
 
 **Folder mode** is available for single sounds only: instead of picking one specific file, you point the sound at a folder and the module picks a random audio file from it each time the tile is clicked.
 
+### Play on Turn Start
+
+Any single sound can be marked as **Play on Turn Start**. When the actor's turn begins in an active combat encounter, the module automatically triggers that sound — no manual click required. Multiple sounds can have this option enabled simultaneously; all of them will play at the start of the turn.
+
+The sound only fires if the actor is a combatant in a started combat. It will not trigger outside of combat or before the GM clicks the Start Combat button.
+
 ---
 
 ## Setting Up Sounds
@@ -55,6 +61,7 @@ Use single sounds for:
    - **Radius** — how far the sound travels, in grid units.
    - **Walls** — whether walls block the sound (repeat mode only).
    - **Repeat** — toggle this on for a looping ambient sound, leave it off for a one-shot.
+   - **Play on Turn Start** — toggle this on to automatically play the sound when this actor's turn begins in combat (single sounds only).
 5. Save the form. The tile appears in the soundboard immediately.
 
 Sounds configured on an **Actor** are shared across all tokens linked to that actor. Sounds configured directly on an **unlinked token** belong only to that token.
