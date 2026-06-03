@@ -4,6 +4,14 @@ A Foundry VTT module that lets you attach sounds to tokens and play them directl
 
 Requires **Foundry VTT v14** or later. A GM must be online for sounds to play.
 
+<p align="center">
+  <img width="600" src="docs/sound-config.webp">
+</p>
+
+<p align="center">
+  <img width="600" src="docs/token-hud.webp">
+</p>
+
 ---
 
 ## How It Works
