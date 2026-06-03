@@ -133,7 +133,7 @@ export function registerTokenHooks() {
 
     if (allowPlayerEdit && game.user.isGM) {
       const lockIcon = document.createElement("i");
-      lockIcon.classList.add("player-edit", "fa-solid", "fa-unlock-keyhole", "fa-2xs");
+      lockIcon.classList.add("player-edit", "fa-solid", "fa-eye");
       button.appendChild(lockIcon);
     }
 

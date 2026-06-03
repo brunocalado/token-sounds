@@ -92,12 +92,12 @@
     }
 
     .player-edit {
-      top: 1px;
-      left: 31px;
-      color: green;
+      top: -5px;
+      right: -5px;
+      color: lightgreen;
       position: absolute;
       pointer-events: none;
-      font-size: 0.4em;
+      font-size: 0.6em;
     }
   }
 }
