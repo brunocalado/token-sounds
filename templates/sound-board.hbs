@@ -1,4 +1,4 @@
-<div class="token-sounds token-sounds-wrapper">
+<div class="token-sounds token-sounds-wrapper" data-tooltip="">
   {{#each sounds}}
   <div class="sound-control sound {{#if ../editable}}editable{{/if}} {{#if playingRepeat}}playing{{/if}}" data-sound-id="{{this.soundId}}" title="{{this.description}}">
     <img {{#if ../editable}}draggable="true"{{/if}} src="{{this.img}}">
