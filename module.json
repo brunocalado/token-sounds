@@ -2,10 +2,11 @@
   "id": "token-sounds",
   "title": "Token Audio FX",
   "description": "Play ambient sounds through tokens.",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "compatibility": {
     "minimum": "14",
-    "verified": "14"
+    "verified": "14",
+    "maximum": "14"
   },
   "authors": [
     {
@@ -18,13 +19,17 @@
     "scripts/token-sounds.js"
   ],
   "styles": [
-    "styles/token-sounds.css",
-    "styles/sound-config.css",
-    "styles/actor-type-defaults.css"
+    {
+      "src": "styles/token-sounds.css"
+    },
+    {
+      "src": "styles/sound-config.css"
+    },
+    {
+      "src": "styles/actor-type-defaults.css"
+    }
   ],
-  
   "socket": true,
-  
   "url": "https://github.com/brunocalado/token-sounds",
   "manifest": "https://raw.githubusercontent.com/brunocalado/token-sounds/main/module.json",
   "download": "https://codeload.github.com/brunocalado/token-sounds/zip/main",

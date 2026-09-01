@@ -1,3 +1,5 @@
-# 0.0.4
+# 0.0.6
 
-- 
+## [Fixed]
+- Module sounds now actually play through Foundry's audio channels (Interface / Music / Environment). The audio instance was built with `new AudioContext(game.audio.environment)` — the `AudioContext` constructor only accepts `{ latencyHint, sampleRate }`, so passing a context there was ignored and a standalone `AudioContext` was created, wired straight to the browser output. As a result the **Audio Channel** setting had no effect, Foundry's volume sliders (Interface/Music/Environment) did not affect playback, and every trigger leaked a hardware context (Chrome caps these at ~6, after which audio stopped playing). The channel's singleton `AudioContext` (`game.audio[channel]`) is now passed straight to `game.audio.create`, with no wrapper — verified in a live client (v14 build 367) routing correctly to all three channels, for both one-shot and repeat sounds.
+- **Repeat** sounds (AmbientSound) now honour the **Audio Channel** setting too. In v14 `AmbientSoundDocument` has no `channel` field — the `channel` passed to `createEmbeddedDocuments` was silently dropped and core routes every AmbientSound to a hardcoded `game.audio.environment`. The setting's channel is now applied in the `AmbientSound#_createSound` patch, the only place this is possible for module-generated sounds. The dead `channel` was removed from the creation payload.

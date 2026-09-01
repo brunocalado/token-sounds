@@ -122,9 +122,15 @@ function patchAmbientSound() {
     if (this.document.getFlag(MODULE_ID, "autoGen")) {
       const path = this.document.path;
       if (!this.id || !path) return null;
+      // Route through the mixer channel from the module setting — core's AmbientSound
+      // hardcodes game.audio.environment and AmbientSoundDocument has no channel field in
+      // v14, so this is the only place the setting can take effect for repeat sounds.
+      // Never a detached `new AudioContext()`: that bypasses Foundry's volume sliders and
+      // leaks a hardware context per placeable.
+      const channel = game.settings.get(MODULE_ID, "channel");
       return game.audio.create({
         src: path,
-        context: new AudioContext(game.audio.environment),
+        context: game.audio[channel] ?? game.audio.environment,
         singleton: false,
       });
     }
@@ -243,14 +249,14 @@ export async function createSound(token, sound, setPosition = false) {
     return;
   }
 
-  const channel = game.settings.get(MODULE_ID, "channel");
+  // No `channel` here: AmbientSoundDocument has no such field in v14 and it would be
+  // stripped on create. The mixer channel is applied in the patched _createSound instead.
   const s = {
     path: sound.path,
     radius: sound.radius ?? 30,
     walls: !!sound.walls,
     volume: sound.volume ?? 0.5,
     repeat: true,
-    channel,
     [`flags.${MODULE_ID}.autoGen`]: true,
   };
 
@@ -421,10 +427,12 @@ async function _onOneShotPlay(payload) {
   const key = `${tokenId}:${soundId}`;
   _stopLocalOneShot(key);
 
-  const ctxSrc = game.audio?.[channel] ?? game.audio?.environment;
+  // Pass the channel's singleton AudioContext straight through so playback stays on
+  // Foundry's mixer (and its volume slider). Wrapping it in `new AudioContext(...)` would
+  // spawn a detached context that plays outside Foundry entirely.
   const sound = game.audio.create({
     src: url,
-    context: ctxSrc ? new AudioContext(ctxSrc) : undefined,
+    context: game.audio[channel] ?? game.audio.environment,
     singleton: false,
   });
   if (!sound) return;
